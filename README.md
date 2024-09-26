@@ -1,2 +1,1 @@
-# stacathome
- mirror contiguous stac assets, manage and load into xarrays
+![image](https://github.com/user-attachments/assets/1061bce8-a2d3-4b45-bc1d-7919fc7f8e39)
