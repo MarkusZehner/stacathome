@@ -1,0 +1,31 @@
+name: stacathome
+channels:
+- conda-forge
+dependencies:
+- altair
+- dask-jobqueue
+- folium
+- fsspec
+- geopandas
+- ipykernel
+- ipywidgets
+- jupyter
+- matplotlib
+- numpy
+- odc-algo
+- odc-stac
+- pandas
+- planetary-computer
+- pyproj
+- pystac-client
+- rasterio
+- rioxarray
+- s3fs
+- scipy
+- segmentation-models-pytorch
+- sen2nbar
+- setuptools
+- stackstac
+- xarray
+- zarr
+
