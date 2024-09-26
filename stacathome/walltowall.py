@@ -1,5 +1,6 @@
 import os
 import copy
+import requests
 import numpy as np
 import pystac_client
 import shapely
@@ -35,6 +36,87 @@ import xarray as xr
 from zarr.errors import ContainsGroupError
 
 odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
+
+
+def get_countries_json(name):
+    if check_if_country_in_repo(name):
+        url = f"https://raw.githubusercontent.com/georgique/world-geojson/main/countries/{
+            name}.json"
+        r = requests.get(url)
+        return r.json()
+
+
+def check_if_country_in_repo(name):
+
+    country_list = ['afghanistan', 'albania', 'algeria', 'andorra', 'angola',
+                    'antigua_and_barbuda', 'argentina', 'armenia', 'australia',
+                    'austria', 'azerbaijan', 'bahamas', 'bahrain', 'bangladesh',
+                    'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan',
+                    'bolivia', 'bosnia_and_herzegovina', 'botswana', 'brazil',
+                    'brunei', 'bulgaria', 'burkina_faso', 'burundi', 'cambodia',
+                    'cameroon', 'canada', 'cape_verde', 'central_african_republic',
+                    'chad', 'chile', 'china', 'colombia', 'comoros', 'congo', 
+                    'cook_islands', 'costa_rica', 'croatia', 'cuba', 'cyprus', 
+                    'czech', 'democratic_congo', 'denmark', 'djibouti', 'dominica', 
+                    'dominican_republic', 'east_timor', 'ecuador', 'egypt', 
+                    'el_salvador', 'equatorial_guinea', 'eritrea', 'estonia', 
+                    'eswatini', 'ethiopia', 'fiji', 'finland', 'france', 'gabon', 
+                    'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada', 
+                    'guatemala', 'guinea', 'guinea_bissau', 'guyana', 'haiti', 
+                    'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran', 
+                    'iraq', 'ireland', 'israel', 'italy', 'ivory_coast', 'jamaica', 
+                    'japan', 'jordan', 'kazakhstan', 'kenya', 'kiribati', 'kuwait', 
+                    'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia', 
+                    'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar', 
+                    'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'marshall_islands', 
+                    'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco', 
+                    'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia', 
+                    'nauru', 'nepal', 'netherlands', 'new_zealand', 'nicaragua', 'niger', 
+                    'nigeria', 'niue', 'north_korea', 'north_macedonia', 'norway', 'oman', 
+                    'pakistan', 'palau', 'palestine', 'panama', 'papua_new_guinea', 'paraguay', 
+                    'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia', 
+                    'rwanda', 'saint_kitts_and_nevis', 'saint_lucia', 'saint_vincent_and_the_grenadines', 
+                    'samoa', 'san_marino', 'sao_tome_and_principe', 'saudi_arabia', 'senegal', 
+                    'serbia', 'seychelles', 'sierra_leone', 'singapore', 'slovakia', 'slovenia', 
+                    'solomon_islands', 'somalia', 'south_africa', 'south_korea', 'south_sudan', 
+                    'spain', 'sri_lanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria', 
+                    'tajikistan', 'tanzania', 'thailand', 'togo', 'tonga', 'trinidad_and_tobago', 
+                    'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda', 'ukraine', 
+                    'united_arab_emirates', 'united_kingdom', 'uruguay', 'usa', 'uzbekistan', 
+                    'vanuatu', 'vatican', 'venezuela', 'vietnam', 'western_sahara', 'yemen', 
+                    'zambia', 'zimbabwe']
+    if name.lower() in country_list:
+        return True
+    else:
+        owner = "georgique"  # GitHub username or organization
+        repo = "world-geojson"    # Repository name
+        # Path within the repository (use an empty string if listing the root)
+        path = "countries"
+        # Branch name (e.g., 'main', 'master', or other branches)
+        branch = "main"
+
+        url = f"https://api.github.com/repos/{owner}/{
+            repo}/contents/{path}?ref={branch}"
+
+        # Make a GET request to the GitHub API
+        response = requests.get(url)
+
+        # Check if the request was successful
+        if response.status_code == 200:
+            contents = response.json()
+            # List all filenames
+            filenames = [item['name'].split(
+                '.')[0] for item in contents if item['type'] == 'file']
+            if name.lower() in filenames:
+                return True
+        else:
+            print(f"Failed to retrieve data: {response.status_code}")
+
+    possible_matches = [
+        country for country in country_list if country.startswith(name[0])]
+    print(f"Country {name} not found in the repository, maybe you meant one of these: {
+          possible_matches}")
+    return None
 
 
 def bbox(lon_lat, resolution, xy_shape):
@@ -129,15 +211,25 @@ def create_skeleton_zarr(geobox, zarr_path,
                      write_empty_chunks=False, compute=False)
 
 
-def get_geobox_from_aoi(aoi_shape, epsg, resolution, return_aoi=False):
-    with open(aoi_shape) as f:
-        d = json.load(f)
+def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False):
+    if type(aoi_shape) == str:
+        with open(aoi_shape) as f:
+            d = json.load(f)
+    else:
+        d = aoi_shape
     aoi = shapely.from_geojson(
         f'{d['features'][0]['geometry']}'.replace("'", '"'))
-    bounds = aoi.bounds
+    
+    # buffer to adjust to chunksize
+    bounds = aoi.buffer(resolution*chunksize/2).bounds
+    geobox = GeoBox.from_bbox(bounds, crs=f"epsg:{epsg}", resolution=resolution)
+
+    # slice to be a multiple of 256
+    geobox = geobox[slice(geobox.shape[0]%chunksize//2, -(chunksize-geobox.shape[0]%chunksize//2)), 
+                    slice(geobox.shape[1]%chunksize//2, -(chunksize-geobox.shape[1]%chunksize//2))]
     if return_aoi:
-        return GeoBox.from_bbox(bounds, crs=f"epsg:{epsg}", resolution=resolution), aoi
-    return GeoBox.from_bbox(bounds, crs=f"epsg:{epsg}", resolution=resolution)
+        return geobox, aoi
+    return geobox
 
 
 def subset_geobox_by_bbox_chunkwise(geobox, epsg, lat, lon, resolution_in_utm, subset_size, chunksize):
