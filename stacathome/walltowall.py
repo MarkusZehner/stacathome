@@ -1,5 +1,6 @@
 import os
 import copy
+import itertools
 import requests
 import numpy as np
 import pystac_client
@@ -55,35 +56,35 @@ def check_if_country_in_repo(name):
                     'bolivia', 'bosnia_and_herzegovina', 'botswana', 'brazil',
                     'brunei', 'bulgaria', 'burkina_faso', 'burundi', 'cambodia',
                     'cameroon', 'canada', 'cape_verde', 'central_african_republic',
-                    'chad', 'chile', 'china', 'colombia', 'comoros', 'congo', 
-                    'cook_islands', 'costa_rica', 'croatia', 'cuba', 'cyprus', 
-                    'czech', 'democratic_congo', 'denmark', 'djibouti', 'dominica', 
-                    'dominican_republic', 'east_timor', 'ecuador', 'egypt', 
-                    'el_salvador', 'equatorial_guinea', 'eritrea', 'estonia', 
-                    'eswatini', 'ethiopia', 'fiji', 'finland', 'france', 'gabon', 
-                    'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada', 
-                    'guatemala', 'guinea', 'guinea_bissau', 'guyana', 'haiti', 
-                    'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran', 
-                    'iraq', 'ireland', 'israel', 'italy', 'ivory_coast', 'jamaica', 
-                    'japan', 'jordan', 'kazakhstan', 'kenya', 'kiribati', 'kuwait', 
-                    'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia', 
-                    'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar', 
-                    'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'marshall_islands', 
-                    'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco', 
-                    'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia', 
-                    'nauru', 'nepal', 'netherlands', 'new_zealand', 'nicaragua', 'niger', 
-                    'nigeria', 'niue', 'north_korea', 'north_macedonia', 'norway', 'oman', 
-                    'pakistan', 'palau', 'palestine', 'panama', 'papua_new_guinea', 'paraguay', 
-                    'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia', 
-                    'rwanda', 'saint_kitts_and_nevis', 'saint_lucia', 'saint_vincent_and_the_grenadines', 
-                    'samoa', 'san_marino', 'sao_tome_and_principe', 'saudi_arabia', 'senegal', 
-                    'serbia', 'seychelles', 'sierra_leone', 'singapore', 'slovakia', 'slovenia', 
-                    'solomon_islands', 'somalia', 'south_africa', 'south_korea', 'south_sudan', 
-                    'spain', 'sri_lanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria', 
-                    'tajikistan', 'tanzania', 'thailand', 'togo', 'tonga', 'trinidad_and_tobago', 
-                    'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda', 'ukraine', 
-                    'united_arab_emirates', 'united_kingdom', 'uruguay', 'usa', 'uzbekistan', 
-                    'vanuatu', 'vatican', 'venezuela', 'vietnam', 'western_sahara', 'yemen', 
+                    'chad', 'chile', 'china', 'colombia', 'comoros', 'congo',
+                    'cook_islands', 'costa_rica', 'croatia', 'cuba', 'cyprus',
+                    'czech', 'democratic_congo', 'denmark', 'djibouti', 'dominica',
+                    'dominican_republic', 'east_timor', 'ecuador', 'egypt',
+                    'el_salvador', 'equatorial_guinea', 'eritrea', 'estonia',
+                    'eswatini', 'ethiopia', 'fiji', 'finland', 'france', 'gabon',
+                    'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada',
+                    'guatemala', 'guinea', 'guinea_bissau', 'guyana', 'haiti',
+                    'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran',
+                    'iraq', 'ireland', 'israel', 'italy', 'ivory_coast', 'jamaica',
+                    'japan', 'jordan', 'kazakhstan', 'kenya', 'kiribati', 'kuwait',
+                    'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia',
+                    'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar',
+                    'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'marshall_islands',
+                    'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco',
+                    'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia',
+                    'nauru', 'nepal', 'netherlands', 'new_zealand', 'nicaragua', 'niger',
+                    'nigeria', 'niue', 'north_korea', 'north_macedonia', 'norway', 'oman',
+                    'pakistan', 'palau', 'palestine', 'panama', 'papua_new_guinea', 'paraguay',
+                    'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia',
+                    'rwanda', 'saint_kitts_and_nevis', 'saint_lucia', 'saint_vincent_and_the_grenadines',
+                    'samoa', 'san_marino', 'sao_tome_and_principe', 'saudi_arabia', 'senegal',
+                    'serbia', 'seychelles', 'sierra_leone', 'singapore', 'slovakia', 'slovenia',
+                    'solomon_islands', 'somalia', 'south_africa', 'south_korea', 'south_sudan',
+                    'spain', 'sri_lanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria',
+                    'tajikistan', 'tanzania', 'thailand', 'togo', 'tonga', 'trinidad_and_tobago',
+                    'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda', 'ukraine',
+                    'united_arab_emirates', 'united_kingdom', 'uruguay', 'usa', 'uzbekistan',
+                    'vanuatu', 'vatican', 'venezuela', 'vietnam', 'western_sahara', 'yemen',
                     'zambia', 'zimbabwe']
     if name.lower() in country_list:
         return True
@@ -219,17 +220,27 @@ def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False
         d = aoi_shape
     aoi = shapely.from_geojson(
         f'{d['features'][0]['geometry']}'.replace("'", '"'))
-    
+
     # buffer to adjust to chunksize
     bounds = aoi.buffer(resolution*chunksize/2).bounds
-    geobox = GeoBox.from_bbox(bounds, crs=f"epsg:{epsg}", resolution=resolution)
+    geobox = GeoBox.from_bbox(
+        bounds, crs=f"epsg:{epsg}", resolution=resolution)
 
     # slice to be a multiple of 256
-    geobox = geobox[slice(geobox.shape[0]%chunksize//2, -(chunksize-geobox.shape[0]%chunksize//2)), 
-                    slice(geobox.shape[1]%chunksize//2, -(chunksize-geobox.shape[1]%chunksize//2))]
+    geobox = geobox[slice(geobox.shape[0] % chunksize//2, -(chunksize-geobox.shape[0] % chunksize//2)),
+                    slice(geobox.shape[1] % chunksize//2, -(chunksize-geobox.shape[1] % chunksize//2))]
     if return_aoi:
         return geobox, aoi
     return geobox
+
+
+def subset_geobox_by_chunk_nr(geobox, chunk_nr, chunksize_xy, chunk_table):
+    chunk = chunk_table.loc[chunk_nr]
+    ch_side = chunksize_xy//2
+    index_slices = [chunk['lon_chunk']-ch_side, chunk['lon_chunk']+ch_side,
+                    chunk['lat_chunk']-ch_side, chunk['lat_chunk']+ch_side]
+    return geobox[index_slices[0]: index_slices[1],
+                  index_slices[2]: index_slices[3]], index_slices
 
 
 def subset_geobox_by_bbox_chunkwise(geobox, epsg, lat, lon, resolution_in_utm, subset_size, chunksize):
@@ -507,7 +518,40 @@ def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices
      )
 
 
-def get_chunk_table(dataset):
+def __lat_lon_from_geobox(geobox, x, y):
+    a = geobox[x, y].affine
+    return (a[2], a[5])
+
+
+def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
+    num_x_chunks = geobox.shape.x//chunksize_xy
+    num_y_chunks = geobox.shape.y//chunksize_xy
+
+    x_ch_id = list(range(chunksize_xy//2, num_x_chunks *
+                   chunksize_xy, chunksize_xy))
+    y_ch_id = list(range(chunksize_xy//2, num_y_chunks *
+                   chunksize_xy, chunksize_xy))
+
+    lon_lat_chunks = list(itertools.product(x_ch_id, y_ch_id))
+    lon_lat_coords = [__lat_lon_from_geobox(
+        geobox, *i) for i in lon_lat_chunks]
+
+    df_locs = pd.DataFrame({'lon_chunk': [l[0] for l in lon_lat_chunks],
+                            'lat_chunk': [l[1] for l in lon_lat_chunks],
+                            'lon_coord': [l[0] for l in lon_lat_coords],
+                            'lat_coord': [l[1] for l in lon_lat_coords],
+                            })
+
+    gpd_locs = gpd.GeoDataFrame(df_locs,
+                                geometry=gpd.points_from_xy(df_locs.lon_coord,
+                                                            df_locs.lat_coord),
+                                crs="EPSG:4326")
+    if aoi:
+        gpd_locs = gpd_locs.clip(aoi).reset_index(drop=True)
+    return gpd_locs
+
+
+def get_chunk_table(dataset, aoi=None):
     ilat = dataset.chunks['latitude']
     ilon = dataset.chunks['longitude']
     itime = dataset.chunks['time']
@@ -531,7 +575,14 @@ def get_chunk_table(dataset):
     df_locs['lon_mid'] = df_locs[2].apply(lambda x: x[0])
     df_locs['lon_chunk'] = df_locs[2].apply(lambda x: x[1])
     df_locs = df_locs.drop(columns=[0, 1, 2])
-    return df_locs
+
+    gpd_locs = gpd.GeoDataFrame(df_locs,
+                                geometry=gpd.points_from_xy(df_locs.lon_mid,
+                                                            df_locs.lat_mid),
+                                crs="EPSG:4326")
+    if aoi:
+        gpd_locs = gpd_locs.clip(aoi)
+    return gpd_locs
 
 
 def get_chunk_index_around_latlon(lat, lon, chunktable):
