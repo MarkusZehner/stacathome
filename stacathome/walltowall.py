@@ -1,49 +1,47 @@
-import os
+from os import listdir, path as os_path, makedirs
 import copy
-import itertools
-import requests
+import warnings
+from urllib.request import urlretrieve
+from requests import get as requests_get
 import numpy as np
-import pystac_client
-import shapely
-import json
-from collections import Counter
+from itertools import product
+
+
+import pandas as pd
 import geopandas as gpd
-import stackstac
-import odc.stac
-from odc.geo.geobox import GeoBox, BoundingBox
-from odc.geo.xr import xr_zeros
-import planetary_computer as pc
+from json import load as json_load
+
+from shapely import from_geojson
+from shapely.ops import unary_union
+from shapely.geometry import shape as s_shape
+
 from dask import delayed
-import rasterio
-import urllib.request
-from rasterio import RasterioIOError
-import rioxarray
+
+
+from planetary_computer import sign as pc_sign
+from odc.stac import configure_rio
+from pystac_client import Client
+from pystac import ItemCollection
+from odc.geo.geobox import GeoBox
+from odc.geo.xr import xr_zeros
 
 from pyproj import Transformer
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
-from pystac import ItemCollection
 
-from shapely.ops import unary_union
-import folium
-import altair as alt
-import folium
+from folium import Map, Popup, LatLngPopup, VegaLite, GeoJson, GeoJsonTooltip, CircleMarker, Circle
+from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value
+import branca.colormap as cm
 
-import warnings
-from itertools import product
 
-import pandas as pd
-import xarray as xr
-from zarr.errors import ContainsGroupError
-
-odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
+configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
 
 def get_countries_json(name):
     if check_if_country_in_repo(name):
         url = f"https://raw.githubusercontent.com/georgique/world-geojson/main/countries/{
             name}.json"
-        r = requests.get(url)
+        r = requests_get(url)
         return r.json()
 
 
@@ -100,7 +98,7 @@ def check_if_country_in_repo(name):
             repo}/contents/{path}?ref={branch}"
 
         # Make a GET request to the GitHub API
-        response = requests.get(url)
+        response = requests_get(url)
 
         # Check if the request was successful
         if response.status_code == 200:
@@ -215,11 +213,10 @@ def create_skeleton_zarr(geobox, zarr_path,
 def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False):
     if type(aoi_shape) == str:
         with open(aoi_shape) as f:
-            d = json.load(f)
+            d = json_load(f)
     else:
         d = aoi_shape
-    aoi = shapely.from_geojson(
-        f'{d['features'][0]['geometry']}'.replace("'", '"'))
+    aoi = from_geojson(f'{d['features'][0]['geometry']}'.replace("'", '"'))
 
     # buffer to adjust to chunksize
     bounds = aoi.buffer(resolution*chunksize/2).bounds
@@ -291,7 +288,7 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Tr
             try:
                 # check if the file is already downloaded
                 # if yes, add path to local_items
-                save_path = os.path.join(*[out_path] +
+                save_path = os_path.join(*[out_path] +
                                          local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
                 if check_sentinel2_data_exists_with_min_size(save_path):
                     local_items[i].assets[b].href = save_path
@@ -332,7 +329,7 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Tr
 
 
 def check_sentinel2_data_exists_with_min_size(path):
-    if not os.path.exists(path) or os.path.getsize(path)//1000000 < __get_filesize_mb_min(path):
+    if not os_path.exists(path) or os_path.getsize(path)//1000000 < __get_filesize_mb_min(path):
         return False
     return True
 
@@ -356,7 +353,7 @@ def __get_filesize_mb_min(path):
 #     hrefs = []
 #     for item in items:
 #         for band in requested_bands:
-#             save_path = os.path.join(*[out_path,
+#             save_path = os_path.join(*[out_path,
 #                                          item.assets[band].href.split("?")[0].split("/")[-6:]])
 #             if not check_sentinel2_data_exists_with_min_size(save_path):
 #                 hrefs.append((item.assets[band].href, save_path))
@@ -369,10 +366,10 @@ def __get_filesize_mb_min(path):
 @delayed
 def get_asset(href, save_path):
     # faster but larger files
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    urllib.request.urlretrieve(pc.sign(href), save_path)
+    makedirs(os_path.dirname(save_path), exist_ok=True)
+    urlretrieve(pc_sign(href), save_path)
     # slower but smaller files, better rasterstats
-    # (rioxarray.open_rasterio(pc.sign(href))
+    # (rioxarray.open_rasterio(pc_sign(href))
     #  .rio.to_raster(save_path))
 
 
@@ -385,6 +382,15 @@ def style_function(feature):
         'fillOpacity': 0.6,      # Opacity of the fill
     }
 
+def style_function_points(feature):
+    linear = cm.LinearColormap(["green", "yellow", "red"], vmin=0, vmax=21889)
+    linear
+    return {
+        'fillColor': linear(feature['properties']['chunk_id']),  # fill for polygons
+        'color': '#000000',         # border for polygons
+        'weight': 0,             # Line thickness
+        'fillOpacity': 0.6,      # Opacity of the fill
+    }
 # Define a highlight function for when the geometry is hovered over
 
 
@@ -397,7 +403,7 @@ def highlight_function(feature):
     }
 
 
-def leaflet_overview(items):
+def leaflet_overview(items, chunktable=None):
     ids = []
     tile = []
     times = []
@@ -408,7 +414,7 @@ def leaflet_overview(items):
         tile.append(i.properties['s2:mgrs_tile'])
         times.append(i.properties['datetime'])
         assets.append(list(i.assets.keys()))
-        geometry.append(shapely.geometry.shape(i.geometry))
+        geometry.append(s_shape(i.geometry))
     gdf = gpd.GeoDataFrame({
         'id': ids,
         'tile': tile,
@@ -420,7 +426,7 @@ def leaflet_overview(items):
     # group by tiles and times
     gdf_tiles = gdf.groupby(['tile']).agg({
         # Merge geometries using unary_union
-        'geometry': lambda x: shapely.geometry.shape(unary_union(x)),
+        'geometry': lambda x: s_shape(unary_union(x)),
     }).reset_index()
     gdf_tiles.set_geometry('geometry', inplace=True, crs='epsg:4326')
     gdf_ex = gdf.explode('assets')
@@ -431,61 +437,83 @@ def leaflet_overview(items):
         y = gdf.geometry.centroid.y.mean()
         x = gdf.geometry.centroid.x.mean()
 
-    m = folium.Map(location=[y, x], zoom_start=7, control_scale=True)
-    folium.LatLngPopup().add_to(m)
+    m = Map(location=[y, x], zoom_start=7, control_scale=True)
+    LatLngPopup().add_to(m)
 
+    if chunktable is not None:
+        linear = cm.LinearColormap(["green", "yellow", "red"], vmin=0, vmax=21889)
+        GeoJson(chunktable,
+                name='MCChunks',
+                show=True,
+                control=False,
+                marker=CircleMarker(
+                   radius=4,
+                   fill_color="orange",
+                   fill_opacity=0.4,
+                   color="black",
+                   weight=1),
+                style_function= lambda feature: {
+                    'fillColor': linear(feature['properties']['chunk_id']),  # fill for polygons
+                    'color': '#000000',         # border for polygons
+                    'weight': 1,             # Line thickness
+                    'fillOpacity': 0.6,      # Opacity of the fill
+                },
+                tooltip=GeoJsonTooltip(fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                ).add_to(m)
     for t in np.unique(gdf.tile):
-        popup = folium.Popup()
+        popup = Popup()
         gdf_ex_sub = gdf_ex.loc[gdf_ex.tile == t]
         gdf_area = gdf_tiles.loc[gdf_tiles.tile == t]
         # make the chart
-        tab = alt.Chart(gdf_ex_sub).mark_point(filled=True).encode(
-            x=alt.X('times:T', title='Time', axis=alt.Axis(format="%Y %B")),
-            y=alt.Y('assets', type='nominal', title='Assets'),
-            color=alt.value('#18334E'),
+        tab = Chart(gdf_ex_sub).mark_point(filled=True).encode(
+            x=alt_X('times:T', title='Time', axis=Axis(format="%Y %B")),
+            y=alt_Y('assets', type='nominal', title='Assets'),
+            color=alt_value('#18334E'),
         ).properties(
             width=600,
             title='Assets over time of tile {}'.format(t),
         ).interactive()
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
             pf_time = pd.DataFrame(
                 {'time': gdf[gdf.tile == t].times.values[::-1],
-                 'difference': np.concatenate((np.diff(gdf[gdf.tile == t].times.values.astype('datetime64[h]')[::-1]).astype(np.float64), [np.nan]))}
+                 'difference': (np.concatenate((np.diff(gdf[gdf.tile == t]
+                                                        .times.values.astype('datetime64[D]')[::-1])
+                                                        .astype(np.float64), [np.nan])))}
             )
-        time_line = alt.Chart(pf_time).mark_line().encode(
-            x=alt.X('time:T', title='Time'),
-            y=alt.Y('difference', title='Difference in hours'),
-            color=alt.value('orange'),
-            strokeDash=alt.value([5, 5]),
-            opacity=alt.value(0.7),
+        time_line = Chart(pf_time).mark_line().encode(
+            x=alt_X('time:T', title='Time'),
+            y=alt_Y('difference', title='Difference in days'),
+            color=alt_value('orange'),
+            strokeDash=alt_value([5, 5]),
+            opacity=alt_value(0.7),
         ).properties(
-            width=600, height=70,
+            width=600, height=100,
         )
-        vega_lite = folium.VegaLite(
+        vega_lite = VegaLite(
             tab + time_line,
             width="100%",
             height="100%",
         )
         vega_lite.add_to(popup)
 
-        folium.GeoJson(gdf_area,
-                       name='Tile',
-                       show=True,
-                       style_function=style_function,
-                       highlight_function=highlight_function,
-                       tooltip=folium.GeoJsonTooltip(fields=['tile']),
-                       popup=popup,
-                       ).add_to(m)
+        GeoJson(gdf_area,
+                name='Tile',
+                show=True,
+                style_function=style_function,
+                highlight_function=highlight_function,
+                tooltip=GeoJsonTooltip(fields=['tile']),
+                popup=popup,
+                ).add_to(m)
     return m
 
 
 def get_all_local_assets(out_path, collection='sentinel-2-l2a', requested_bands=None):
-    files = os.listdir(out_path)
+    files = listdir(out_path)
     files = [f[:27] + f[33:-5] for f in files if f.endswith('.SAFE')]
 
     stac = "https://planetarycomputer.microsoft.com/api/stac/v1"
-    catalog = pystac_client.Client.open(stac)
+    catalog = Client.open(stac)
     local_items = catalog.search(
         ids=files,
         collections=[collection],
@@ -524,15 +552,15 @@ def __lat_lon_from_geobox(geobox, x, y):
 
 
 def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
-    num_x_chunks = geobox.shape.x//chunksize_xy
-    num_y_chunks = geobox.shape.y//chunksize_xy
+    num_lon_chunks = geobox.shape.y//chunksize_xy
+    num_lat_chunks = geobox.shape.x//chunksize_xy
 
-    x_ch_id = list(range(chunksize_xy//2, num_x_chunks *
+    lon_ch_id = list(range(chunksize_xy//2, num_lon_chunks *
                    chunksize_xy, chunksize_xy))
-    y_ch_id = list(range(chunksize_xy//2, num_y_chunks *
+    lat_ch_id = list(range(chunksize_xy//2, num_lat_chunks *
                    chunksize_xy, chunksize_xy))
 
-    lon_lat_chunks = list(itertools.product(x_ch_id, y_ch_id))
+    lon_lat_chunks = list(product(lon_ch_id, lat_ch_id))
     lon_lat_coords = [__lat_lon_from_geobox(
         geobox, *i) for i in lon_lat_chunks]
 
@@ -547,96 +575,102 @@ def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
                                                             df_locs.lat_coord),
                                 crs="EPSG:4326")
     if aoi:
-        gpd_locs = gpd_locs.clip(aoi).reset_index(drop=True)
-    return gpd_locs
-
-
-def get_chunk_table(dataset, aoi=None):
-    ilat = dataset.chunks['latitude']
-    ilon = dataset.chunks['longitude']
-    itime = dataset.chunks['time']
-
-    idlon = [sum(ilon[:i]) for i in range(len(ilon))]
-    idlat = [sum(ilat[:i]) for i in range(len(ilat))]
-    idtime = [sum(itime[:i]) for i in range(len(itime)+1)]
-
-    lon_mids = dataset.longitude.values[np.array(idlon[:-1]) + ilon[0]//2]
-    lat_mids = dataset.latitude.values[np.array(idlat[:-1]) + ilat[0]//2]
-    time_mids = dataset.time.values[np.array(idtime[:-1]) + itime[0]//2]
-
-    df_locs = pd.DataFrame(list(product(zip(time_mids, idtime),
-                                        zip(lat_mids, idlat),
-                                        zip(lon_mids, idlon))))
-
-    df_locs['time_mid'] = df_locs[0].apply(lambda x: x[0])
-    df_locs['time_chunk'] = df_locs[0].apply(lambda x: x[1])
-    df_locs['lat_mid'] = df_locs[1].apply(lambda x: x[0])
-    df_locs['lat_chunk'] = df_locs[1].apply(lambda x: x[1])
-    df_locs['lon_mid'] = df_locs[2].apply(lambda x: x[0])
-    df_locs['lon_chunk'] = df_locs[2].apply(lambda x: x[1])
-    df_locs = df_locs.drop(columns=[0, 1, 2])
-
-    gpd_locs = gpd.GeoDataFrame(df_locs,
-                                geometry=gpd.points_from_xy(df_locs.lon_mid,
-                                                            df_locs.lat_mid),
-                                crs="EPSG:4326")
-    if aoi:
         gpd_locs = gpd_locs.clip(aoi)
+        gpd_locs = gpd_locs.sort_values(['lon_chunk', 'lat_chunk']).reset_index(drop=True)
+        gpd_locs['chunk_id'] = gpd_locs.index
     return gpd_locs
 
 
-def get_chunk_index_around_latlon(lat, lon, chunktable):
-    return np.sqrt((chunktable['lat_mid'] - lat)**2 + (chunktable['lon_mid'] - lon)**2).argmin()
+# def get_chunk_table(dataset, aoi=None):
+#     ilat = dataset.chunks['latitude']
+#     ilon = dataset.chunks['longitude']
+#     itime = dataset.chunks['time']
+
+#     idlon = [sum(ilon[:i]) for i in range(len(ilon))]
+#     idlat = [sum(ilat[:i]) for i in range(len(ilat))]
+#     idtime = [sum(itime[:i]) for i in range(len(itime)+1)]
+
+#     lon_mids = dataset.longitude.values[np.array(idlon[:-1]) + ilon[0]//2]
+#     lat_mids = dataset.latitude.values[np.array(idlat[:-1]) + ilat[0]//2]
+#     time_mids = dataset.time.values[np.array(idtime[:-1]) + itime[0]//2]
+
+#     df_locs = pd.DataFrame(list(product(zip(time_mids, idtime),
+#                                         zip(lat_mids, idlat),
+#                                         zip(lon_mids, idlon))))
+
+#     df_locs['time_mid'] = df_locs[0].apply(lambda x: x[0])
+#     df_locs['time_chunk'] = df_locs[0].apply(lambda x: x[1])
+#     df_locs['lat_mid'] = df_locs[1].apply(lambda x: x[0])
+#     df_locs['lat_chunk'] = df_locs[1].apply(lambda x: x[1])
+#     df_locs['lon_mid'] = df_locs[2].apply(lambda x: x[0])
+#     df_locs['lon_chunk'] = df_locs[2].apply(lambda x: x[1])
+#     df_locs = df_locs.drop(columns=[0, 1, 2])
+
+#     gpd_locs = gpd.GeoDataFrame(df_locs,
+#                                 geometry=gpd.points_from_xy(df_locs.lon_mid,
+#                                                             df_locs.lat_mid),
+#                                 crs="EPSG:4326")
+#     if aoi:
+#         gpd_locs = gpd_locs.clip(aoi)
+#     return gpd_locs
 
 
-def get_chunk_at_index(index_, chunktable, dataset):
-
-    t_max = chunktable['time_chunk'][index_] + dataset.chunks['time'][0]
-    t_max = t_max if t_max < len(dataset.time) else len(dataset.time)
-    lat_max = chunktable['lat_chunk'][index_] + dataset.chunks['latitude'][0]
-    lat_max = lat_max if lat_max < len(
-        dataset.latitude) else len(dataset.latitude)
-    lon_max = chunktable['lon_chunk'][index_] + dataset.chunks['longitude'][0]
-    lon_max = lon_max if lon_max < len(
-        dataset.longitude) else len(dataset.longitude)
-
-    time_slice = (chunktable['time_chunk'][index_], t_max)
-    lat_slice = (chunktable['lat_chunk'][index_], lat_max)
-    lon_slice = (chunktable['lon_chunk'][index_], lon_max)
-
-    return {'time_slice': time_slice,
-            'lat_slice': lat_slice,
-            'lon_slice': lon_slice}
+# def get_chunk_index_around_latlon(lat, lon, chunktable):
+#     return np.sqrt((chunktable['lat_mid'] - lat)**2 + (chunktable['lon_mid'] - lon)**2).argmin()
 
 
-def get_mc_from_large_data(slices, dataset):
-    return dataset.isel(time=slice(*slices['time_slice']),
-                        latitude=slice(*slices['lat_slice']),
-                        longitude=slice(*slices['lon_slice']))
+# def get_slices_at_index(index_, chunktable, dataset):
+
+#     # t_max = chunktable['time_chunk'][index_] + dataset.chunks['time'][0]
+#     # t_max = t_max if t_max < len(dataset.time) else len(dataset.time)
+#     lat_max = chunktable['lat_chunk'][index_] + dataset.chunks['latitude'][0]
+#     lat_max = lat_max if lat_max < len(
+#         dataset.latitude) else len(dataset.latitude)
+#     lon_max = chunktable['lon_chunk'][index_] + dataset.chunks['longitude'][0]
+#     lon_max = lon_max if lon_max < len(
+#         dataset.longitude) else len(dataset.longitude)
+
+#     # time_slice = (chunktable['time_chunk'][index_], t_max)
+#     lat_slice = (chunktable['lat_chunk'][index_], lat_max)
+#     lon_slice = (chunktable['lon_chunk'][index_], lon_max)
+
+#     return {  # 'time_slice': time_slice,
+#         'lat_slice': lat_slice,
+#         'lon_slice': lon_slice}
 
 
-def mc_from_chunk(lat, lon, dataset):
-    chunktable = get_chunk_table(dataset)
-    index_ = get_chunk_index_around_latlon(lat, lon, chunktable)
-    slices = get_chunk_at_index(index_, chunktable, dataset)
-    return get_mc_from_large_data(slices, dataset)
+def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None):
+    if time_slice:
+        return dataset.isel(time=slice(*time_slice),
+                            latitude=slice(*lat_slice),
+                            longitude=slice(*lon_slice))
+    else:
+        return dataset.isel(latitude=slice(*lat_slice),
+                            longitude=slice(*lon_slice))
+
+
+# def mc_from_chunk(lat, lon, dataset):
+#     chunktable = get_chunk_table(dataset)
+#     index_ = get_chunk_index_around_latlon(lat, lon, chunktable)
+#     slices = get_slice_from_large_data(index_, chunktable, dataset)
+#     return get_mc_from_large_data(slices, dataset)
 
 
 # move tile data to folder structure
 # for i in range(len(avail_items)):
 #     for b in requested_bands:
-#         #items[i].assets[b].href = os.path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:])
+#         #items[i].assets[b].href = os_path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:])
 #         assert items[i].assets[b].href.split("?")[0].split("/")[-1] == avail_items[i].assets[b].href.split("/")[-1]
-#         new_loc = os.path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:])
+#         new_loc = os_path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:])
 
-#         new_path = os.path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:-1])
+#         new_path = os_path.join(*[out_path, folder_name] + items[i].assets[b].href.split("?")[0].split("/")[-6:-1])
 
 
-#         if not os.path.exists(new_path):
-#            os.makedirs(new_path)
+#
+#         makedirs(new_path, exists_ok=True)
 
 #         #move file to correct location
-#         os.rename(avail_items[i].assets[b].href, new_loc)
+#         os_rename(avail_items[i].assets[b].href, new_loc)
 
 
 # this runs, but is maybe not nice, 15 min for 20 gb
