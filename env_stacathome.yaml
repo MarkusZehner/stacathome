@@ -3,6 +3,7 @@ channels:
 - conda-forge
 dependencies:
 - altair
+- bokeh
 - dask-jobqueue
 - folium
 - geopandas
@@ -15,6 +16,7 @@ dependencies:
 - pystac-client
 - rioxarray
 - setuptools
+- tqdm
 - xarray
 - zarr
 

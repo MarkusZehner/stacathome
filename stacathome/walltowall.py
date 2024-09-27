@@ -1,4 +1,12 @@
+import dask.bag as db
+from itertools import chain
+from functools import partial
+import dask
+from tqdm import tqdm
+import dask.bag
+import dask.backends
 from os import listdir, path as os_path, makedirs
+import pickle
 import copy
 import warnings
 from urllib.request import urlretrieve
@@ -13,14 +21,15 @@ from json import load as json_load
 
 from shapely import from_geojson
 from shapely.ops import unary_union
-from shapely.geometry import shape as s_shape
+from shapely.geometry import shape as s_shape, Polygon, Point, box as s_box
 
-from dask import delayed
-
+from dask import delayed, compute as dask_compute
+from dask.distributed import Client as daskClient
+from dask_jobqueue import SLURMCluster
 
 from planetary_computer import sign as pc_sign
 from odc.stac import configure_rio
-from pystac_client import Client
+from pystac_client import Client as pystacClient
 from pystac import ItemCollection
 from odc.geo.geobox import GeoBox
 from odc.geo.xr import xr_zeros
@@ -29,12 +38,290 @@ from pyproj import Transformer
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 
-from folium import Map, Popup, LatLngPopup, VegaLite, GeoJson, GeoJsonTooltip, CircleMarker, Circle
+from folium import (Map, Popup, LatLngPopup, VegaLite, GeoJson,
+                    GeoJsonTooltip, CircleMarker, Circle, LayerControl)
 from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value
 import branca.colormap as cm
 
 
 configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
+
+
+class MaxiCube:
+
+    def __init__(self, aoi, crs=4326, resolution=0.00018,
+                 chunksize_xy=256,
+                 chunksize_t=-1,
+                 path=None,
+                 url=None,
+                 collection='sentinel-2-l2a',
+                 requested_bands=None,
+                 save_name='stacathome_local_items.pkl'):
+        # manage data structure
+        aoi, self.name = get_aoi_and_name(aoi)
+        self.crs = crs
+        self.resolution = resolution
+        self.chunksize_xy = chunksize_xy
+        self.chunksize_t = chunksize_t
+        self.geobox, self.aoi = get_geobox_from_aoi(
+            aoi, self.crs, self.resolution, self.chunksize_xy, return_aoi=True)
+        self.chunk_table = chunk_table_from_geobox(
+            self.geobox, self.chunksize_xy, self.aoi)
+        if not requested_bands:
+            self.requested_bands = ['B02', 'B03', 'B04', 'B8A']
+        else:
+            self.requested_bands = requested_bands
+
+        # manage data assets
+        if not url:
+            self.url = "https://planetarycomputer.microsoft.com/api/stac/v1"
+        else:
+            self.url = url
+        self.collection = collection
+
+        self.path = path
+        self.save_name = save_name
+        if self.path:
+            self.items_local_global = self.local_assets()
+        else:
+            self.items_local_global = None
+        self.req_items = None
+        self.pending = None
+        self.req_items_local = None
+
+    def plot_chunk_table(self):
+        return self.chunk_table.plot(column='chunk_id', cmap='viridis', legend=True, markersize=.05)
+
+    def subset(self, chunk_id=None, lat_lon=None, enlarge_by_n_chunks=0):
+        if chunk_id is not None:
+            subset, yx_index_slices = subset_geobox_by_chunk_nr(self.geobox, chunk_id, self.chunksize_xy,
+                                                                self.chunk_table, enlarge_by_n_chunks)
+        elif lat_lon is not None:
+            subset, yx_index_slices = subset_geobox_by_chunks_latlon(self.geobox, lat_lon[0], lat_lon[1],
+                                                                     self.chunksize_xy,
+                                                                     self.chunk_table,
+                                                                     enlarge_by_n_chunks)
+        else:
+            raise ValueError('Must provide either chunk_id or lat_lon')
+        return subset, yx_index_slices
+
+    def request_items(self, start_date, end_date,
+                      subset, enlarge_by_n_chunks=0,
+                      collection=None, url=None):
+        if subset is None and subset == 'full':
+            subset = self.aoi
+            print('Using full aoi this may take a while')
+        elif isinstance(subset, int):
+            subset, _ = self.subset(chunk_id=subset,
+                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset = s_box(*subset.boundingbox)
+        elif isinstance(subset, tuple):
+            subset, _ = self.subset(lat_lon=subset,
+                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset = s_box(*subset.boundingbox)
+
+        if not collection:
+            collection = self.collection
+        else:
+            raise UserWarning(
+                'Using collection defined in function call - may differ from init')
+        if not url:
+            url = self.url
+        else:
+            raise UserWarning(
+                'Using url defined in function call - may differ from init')
+        # catalog setup
+        catalog = pystacClient.open(url)
+        self.req_items = catalog.search(
+            intersects=subset,
+            datetime=f"{start_date}/{end_date}",
+            collections=[collection],
+        ).item_collection()
+        self.compare_local(report=True)
+
+    def compare_local(self, report=False):
+        if not self.req_items:
+            raise ValueError('Request items first')
+        self.req_items_local, self.pending = check_request_against_local(self.req_items, self.path,
+                                                                         requested_bands=self.requested_bands, report=report)
+
+    def local_assets(self, rerequest=False):
+        if not rerequest or os_path.exists(os_path.join(self.path, self.save_name)):
+            return pickle.load(open(os_path.join(self.path, self.save_name), 'rb'))
+        return get_all_local_assets(self.path, self.collection, self.requested_bands)
+
+    def plot(self, items=None, plot_chunks=True, subset_chunks_by=50):
+        # ENH: add option to plot requested/avail items
+        if not items:
+            items = self.items_local_global
+        if plot_chunks:
+            return leaflet_overview(items, self.chunk_table.iloc[::subset_chunks_by], self.aoi)
+        else:
+            return leaflet_overview(items, aoi=self.aoi)
+
+    def download(self, items=None, use_dask=True, daskkwargs={}):
+        if not items:
+            if not self.req_items:
+                raise ValueError(
+                    'Request items first, or provide items to the download function')
+            items = self.req_items
+        else:
+            raise UserWarning(
+                'Using items defined in function call - may differ from request')
+
+        self.compare_local(report=False)
+
+        if len(self.pending) == 0:
+            print('All items already downloaded')
+            return
+
+        if use_dask:
+            # Create a SLURM cluster
+            cluster = SLURMCluster(
+                queue=daskkwargs['queue'] if 'queue' in daskkwargs else 'work',
+                cores=daskkwargs['cores'] if 'cores' in daskkwargs else 1,
+                memory=daskkwargs['memory'] if 'memory' in daskkwargs else '500MB',
+                walltime=daskkwargs['walltime'] if 'walltime' in daskkwargs else '03:00:00',
+            )
+
+            if 'min_workers' in daskkwargs and 'max_workers' in daskkwargs:
+                cluster.adapt(
+                    minimum=daskkwargs['min_workers'], maximum=daskkwargs['max_workers'])
+            elif 'num_workers' in daskkwargs:
+                cluster.scale(jobs=daskkwargs['num_workers'])
+            else:
+                cluster.adapt(minimum=1, maximum=20)
+
+            # Create a Dask client that connects to the cluster
+            client = daskClient(cluster)
+
+            # Check cluster status
+            print(cluster)
+
+            tasks = [dask.delayed(get_asset(*i)) for i in self.pending]
+
+            if len(tasks) > 10000000:
+                # https://docs.dask.org/en/stable/delayed-best-practices.html
+                print('many tasks consider dask.bag')
+
+            job_results = dask_compute(*tasks)
+
+            client.close()
+            cluster.close()
+
+            to_pop = []
+            for i, j in enumerate(job_results):
+                if j == None:
+                    to_pop.append(i)
+            for i in to_pop[::-1]:
+                self.pending.pop(i)
+
+            if len(self.pending) == 0:
+                return 'All items downloaded'
+
+        else:
+            for i in tqdm(self.pending):
+                get_asset(*i)
+
+    def merge_items(self, items=None):
+        if not items:
+            if not self.req_items_local:
+                raise ValueError('Request and download items first!')
+            items = self.req_items_local
+        for i in self.req_items_local:
+            if i not in self.items_local_global:
+                self.items_local_global.append(i)
+            else:
+                idx = self.items_local_global.index(i)
+                for band in i.assets:
+                    if band not in self.items_local_global[idx].assets:
+                        self.items_local_global[idx].assets[band] = i.assets[band]
+
+    def save_items(self, items=None):
+        if not items:
+            if not self.req_items:
+                raise ValueError('Request and download items first!')
+            items = self.req_items
+        elif isinstance(items[0], list):
+            items = self.get_unique_elements(items)
+
+        self.compare_local(report=False)
+        self.merge_items()
+
+        with open(os_path.join(self.path, self.save_name), 'wb') as f:
+            pickle.dump(self.items_local_global, f)
+
+    def parallel_request(self, start_date, end_date):
+        # determine maximum edges
+        lonmin, latmin, lonmax, latmax = self.aoi.bounds
+
+        resolution = .8  # ~90 km, should catch most S2 tiles of 110x110 km
+        X, Y = np.meshgrid(np.arange(latmin, latmax, resolution),
+                           np.arange(lonmin, lonmax, resolution))
+
+        points = list(zip(Y.flatten(), X.flatten()))
+
+        process = [(point)
+                   for point in points if self.aoi.contains(Point(*point))]
+
+        request_partial = partial(request_items_parallel, start_date=start_date,
+                                  end_date=end_date, collection=self.collection, url=self.url)
+        dask_bag = db.from_sequence(process).map(request_partial)
+        items = dask_bag.compute()
+
+        return items
+
+    def check_parallel_request(self, items):
+        unique = get_unique_elements(items)
+        _, filtered_requests = check_request_against_local(unique, out_path=self.path,
+                                                           requested_bands=self.requested_bands)
+        return filtered_requests
+
+    def parallel_download(self, items):
+        downloads = db.from_sequence(items).map(download_item)
+        downloads.compute()
+
+
+def download_item(item):
+    return get_asset(*item)
+
+
+def get_unique_elements(lists_of_objects):
+    merged_list = list(chain(*lists_of_objects))
+    return list(set(merged_list))
+
+
+def request_items_parallel(lon_lat, start_date, end_date, url, collection):
+    catalog = pystacClient.open(url)
+    return catalog.search(intersects=Point(lon_lat[0], lon_lat[1]),
+                            datetime=f"{start_date}/{end_date}",
+                            collections=[collection],
+                            ).item_collection()
+
+
+def get_aoi_and_name(aoi):
+    if os_path.exists(aoi):
+        with open(aoi) as f:
+            d = json_load(f)
+        shape = from_geojson(
+            f'{d['features'][0]['geometry']}'.replace("'", '"'))
+    else:
+        shape = get_countries_json(aoi)
+    return shape, aoi
+
+
+def check_resolution(crs, resolution, resolution_utm):
+    if resolution is None and resolution_utm is None:
+        raise ValueError(
+            "Either resolution or resolution_utm must be provided")
+    if crs == 4326:
+        if resolution:
+            resolution = resolution
+            resolution_utm = resolution * 111319.5
+        else:
+            resolution_utm = resolution_utm
+            resolution = resolution_utm / 111319.5
+    return resolution, resolution_utm
 
 
 def get_countries_json(name):
@@ -231,13 +518,42 @@ def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False
     return geobox
 
 
-def subset_geobox_by_chunk_nr(geobox, chunk_nr, chunksize_xy, chunk_table):
+def make_valid_slices_within_geobox(geobox, index_slices):
+    if index_slices[0] < 0:
+        index_slices[0] = 0
+    if index_slices[1] > geobox.shape[1]:
+        index_slices[1] = geobox.shape[1]
+    if index_slices[2] < 0:
+        index_slices[2] = 0
+    if index_slices[3] > geobox.shape[0]:
+        index_slices[3] = geobox.shape[0]
+    return index_slices
+
+
+def subset_geobox_by_chunk_nr(geobox, chunk_nr, chunksize_xy, chunk_table, enlarge_by_n_chunks=0):
+    chunksize_buffered = chunksize_xy + chunksize_xy * enlarge_by_n_chunks * 2
     chunk = chunk_table.loc[chunk_nr]
-    ch_side = chunksize_xy//2
+    ch_side = chunksize_buffered//2
     index_slices = [chunk['lon_chunk']-ch_side, chunk['lon_chunk']+ch_side,
                     chunk['lat_chunk']-ch_side, chunk['lat_chunk']+ch_side]
+
+    index_slices = make_valid_slices_within_geobox(geobox, index_slices)
+
+    assert (index_slices[1] - index_slices[0]) % chunksize_xy == 0
+    assert (index_slices[3] - index_slices[2]) % chunksize_xy == 0
+
     return geobox[index_slices[0]: index_slices[1],
                   index_slices[2]: index_slices[3]], index_slices
+
+
+def get_index_of_chunk_by_latlon(lat, lon, chunk_table):
+    return np.sqrt((chunk_table['lat_coord'] - lat)**2 + (chunk_table['lon_coord'] - lon)**2).argmin()
+
+
+def subset_geobox_by_chunks_latlon(geobox, lat, lon, chunksize_xy, chunk_table, enlarge_by_n_chunks=0):
+    index_ = get_index_of_chunk_by_latlon(lat, lon, chunk_table)
+
+    return subset_geobox_by_chunk_nr(geobox, index_, chunksize_xy, chunk_table, enlarge_by_n_chunks)
 
 
 def subset_geobox_by_bbox_chunkwise(geobox, epsg, lat, lon, resolution_in_utm, subset_size, chunksize):
@@ -254,7 +570,7 @@ def subset_geobox_by_bbox_chunkwise(geobox, epsg, lat, lon, resolution_in_utm, s
                   index_slices[2]: index_slices[3]], index_slices
 
 
-def check_request_against_local(items, out_path, requested_bands=None, report=True):
+def check_request_against_local(items, out_path, requested_bands=None, report=False):
     """
     Check which of the requested assets are already downloaded and which are missing.
     list of available assets can be directly passed to odc-stac.
@@ -284,23 +600,33 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Tr
     missing_assets = 0
     for i in range(len(local_items)):
         downloaded = True
-        for b in requested_bands:
-            try:
-                # check if the file is already downloaded
-                # if yes, add path to local_items
+        if os_path.exists(os_path.join(out_path, next(iter(local_items[i].assets.values())).href.split("?")[0].split("/")[-6])):
+            for b in requested_bands:
+                try:
+                    # check if the file is already downloaded
+                    # if yes, add path to local_items
+                    save_path = os_path.join(*[out_path] +
+                                             local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
+                    # check_sentinel2_data_exists_with_min_size(save_path):
+                    if os_path.exists(save_path):
+                        local_items[i].assets[b].href = save_path
+                    else:
+                        to_download.append(
+                            (local_items[i].assets[b].href, save_path))
+                        missing_assets += 1
+                        downloaded = False
+                        del local_items[i].assets[b]
+                except KeyError as e:
+                    pass
+                    # print(f'Asset {b} not found in item {local_items[i].id}')
+        else:
+            for b in requested_bands:
                 save_path = os_path.join(*[out_path] +
                                          local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
-                if check_sentinel2_data_exists_with_min_size(save_path):
-                    local_items[i].assets[b].href = save_path
-                else:
-                    to_download.append(
-                        (local_items[i].assets[b].href, save_path))
-                    missing_assets += 1
-                    downloaded = False
-                    del local_items[i].assets[b]
-            except KeyError as e:
-                pass
-                # print(f'Asset {b} not found in item {local_items[i].id}')
+                to_download.append((local_items[i].assets[b].href, save_path))
+                del local_items[i].assets[b]
+                missing_assets += 1
+            downloaded = False
 
         for b in ingnore_assets:
             try:
@@ -363,7 +689,6 @@ def __get_filesize_mb_min(path):
 #     return tasks
 
 
-@delayed
 def get_asset(href, save_path):
     # faster but larger files
     makedirs(os_path.dirname(save_path), exist_ok=True)
@@ -382,11 +707,13 @@ def style_function(feature):
         'fillOpacity': 0.6,      # Opacity of the fill
     }
 
+
 def style_function_points(feature):
     linear = cm.LinearColormap(["green", "yellow", "red"], vmin=0, vmax=21889)
     linear
     return {
-        'fillColor': linear(feature['properties']['chunk_id']),  # fill for polygons
+        # fill for polygons
+        'fillColor': linear(feature['properties']['chunk_id']),
         'color': '#000000',         # border for polygons
         'weight': 0,             # Line thickness
         'fillOpacity': 0.6,      # Opacity of the fill
@@ -403,7 +730,7 @@ def highlight_function(feature):
     }
 
 
-def leaflet_overview(items, chunktable=None):
+def leaflet_overview(items, chunktable=None, aoi=None):
     ids = []
     tile = []
     times = []
@@ -432,33 +759,43 @@ def leaflet_overview(items, chunktable=None):
     gdf_ex = gdf.explode('assets')
     gdf_ex['assets'] = gdf_ex.assets.astype('category')
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        y = gdf.geometry.centroid.y.mean()
-        x = gdf.geometry.centroid.x.mean()
-
-    m = Map(location=[y, x], zoom_start=7, control_scale=True)
+    m = Map(control_scale=True)
     LatLngPopup().add_to(m)
 
+    if aoi is not None:
+        GeoJson(aoi,
+                name='AOI',
+                show=True,
+                control=True,
+                style_function=lambda feature: {
+                    'color': '#000000',         # border for polygons
+                    'weight': 2,             # Line thickness
+                    'fillOpacity': 0.,      # Opacity of the fill
+                },
+                ).add_to(m)
+
     if chunktable is not None:
-        linear = cm.LinearColormap(["green", "yellow", "red"], vmin=0, vmax=21889)
+        linear = cm.LinearColormap(
+            ["green", "yellow", "red"], vmin=0, vmax=21889)
         GeoJson(chunktable,
                 name='MCChunks',
                 show=True,
-                control=False,
+                control=True,
                 marker=CircleMarker(
-                   radius=4,
-                   fill_color="orange",
-                   fill_opacity=0.4,
-                   color="black",
-                   weight=1),
-                style_function= lambda feature: {
-                    'fillColor': linear(feature['properties']['chunk_id']),  # fill for polygons
+                    radius=4,
+                    fill_color="orange",
+                    fill_opacity=0.4,
+                    color="black",
+                    weight=1),
+                style_function=lambda feature: {
+                    # fill for polygons
+                    'fillColor': linear(feature['properties']['chunk_id']),
                     'color': '#000000',         # border for polygons
                     'weight': 1,             # Line thickness
                     'fillOpacity': 0.6,      # Opacity of the fill
                 },
-                tooltip=GeoJsonTooltip(fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                tooltip=GeoJsonTooltip(
+                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
                 ).add_to(m)
     for t in np.unique(gdf.tile):
         popup = Popup()
@@ -479,7 +816,7 @@ def leaflet_overview(items, chunktable=None):
                 {'time': gdf[gdf.tile == t].times.values[::-1],
                  'difference': (np.concatenate((np.diff(gdf[gdf.tile == t]
                                                         .times.values.astype('datetime64[D]')[::-1])
-                                                        .astype(np.float64), [np.nan])))}
+                                                .astype(np.float64), [np.nan])))}
             )
         time_line = Chart(pf_time).mark_line().encode(
             x=alt_X('time:T', title='Time'),
@@ -500,11 +837,14 @@ def leaflet_overview(items, chunktable=None):
         GeoJson(gdf_area,
                 name='Tile',
                 show=True,
+                control=False,
                 style_function=style_function,
                 highlight_function=highlight_function,
                 tooltip=GeoJsonTooltip(fields=['tile']),
-                popup=popup,
+                popup=popup,  # ENH: make the popup a funciton of the tile
                 ).add_to(m)
+    m.fit_bounds(m.get_bounds())
+    LayerControl().add_to(m)
     return m
 
 
@@ -513,7 +853,7 @@ def get_all_local_assets(out_path, collection='sentinel-2-l2a', requested_bands=
     files = [f[:27] + f[33:-5] for f in files if f.endswith('.SAFE')]
 
     stac = "https://planetarycomputer.microsoft.com/api/stac/v1"
-    catalog = Client.open(stac)
+    catalog = pystacClient.open(stac)
     local_items = catalog.search(
         ids=files,
         collections=[collection],
@@ -556,9 +896,9 @@ def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
     num_lat_chunks = geobox.shape.x//chunksize_xy
 
     lon_ch_id = list(range(chunksize_xy//2, num_lon_chunks *
-                   chunksize_xy, chunksize_xy))
+                           chunksize_xy, chunksize_xy))
     lat_ch_id = list(range(chunksize_xy//2, num_lat_chunks *
-                   chunksize_xy, chunksize_xy))
+                           chunksize_xy, chunksize_xy))
 
     lon_lat_chunks = list(product(lon_ch_id, lat_ch_id))
     lon_lat_coords = [__lat_lon_from_geobox(
@@ -576,7 +916,8 @@ def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
                                 crs="EPSG:4326")
     if aoi:
         gpd_locs = gpd_locs.clip(aoi)
-        gpd_locs = gpd_locs.sort_values(['lon_chunk', 'lat_chunk']).reset_index(drop=True)
+        gpd_locs = gpd_locs.sort_values(
+            ['lon_chunk', 'lat_chunk']).reset_index(drop=True)
         gpd_locs['chunk_id'] = gpd_locs.index
     return gpd_locs
 
