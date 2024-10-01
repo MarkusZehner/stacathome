@@ -21,10 +21,9 @@ from zarr.errors import ContainsGroupError
 from xarray import open_zarr as xr_open_zarr
 
 from shapely import from_geojson
-from shapely.ops import unary_union
-from shapely.geometry import shape as s_shape, Point, box as s_box
+from shapely.geometry import Point, box as s_box
 
-from dask import delayed, compute as dask_compute
+from dask import delayed
 from dask.distributed import Client as daskClient
 from dask_jobqueue import SLURMCluster
 
@@ -696,9 +695,9 @@ class MaxiCube:
         if dask:
             return tasks
 
-    def get_chunk(self, chunk_id, time_slice=None, drop_na=False):
+    def get_chunk(self, chunk_id, time_slice=None, drop_fill=False):
         """
-        Get a chunk from the large cube.
+        Get a chunk from the large cube, na are filled with 0 to save space.
 
         Parameters
         ----------
@@ -706,8 +705,8 @@ class MaxiCube:
             The chunk id or lat_lon to get.
         time_slice: tuple
             The time slice to get.
-        drop_na: bool
-            If True, will drop na values. this will cast the data to float!
+        drop_fill: bool
+            If True, will drop all-fill value time slices.
 
         Returns
         -------
@@ -732,9 +731,9 @@ class MaxiCube:
                 time_slice = (t_slice_start, t_slice_end+1)
             chunk_data = get_slice_from_large_data(xr_open_zarr(
                 self.zarr_path, mask_and_scale=False), lat_slice=yx_index_slices[:2], lon_slice=yx_index_slices[2:], time_slice=time_slice)
-            if drop_na:
-                chunk_data = chunk_data.where(
-                    chunk_data != 0, np.nan).dropna('time', how='all')
+            if drop_fill:
+                mean_over_time = chunk_data[self.requested_bands[0]].mean(dim=['latitude', 'longitude'])
+                chunk_data = chunk_data.isel(time=np.where(mean_over_time != 0)[0])
             return chunk_data
 
 
