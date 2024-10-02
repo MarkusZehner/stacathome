@@ -4,15 +4,16 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 
+from shapely import transform
 from shapely.ops import unary_union
-from shapely.geometry import shape as s_shape, Point, box as s_box
+from shapely.geometry import shape as s_shape, Point, box as s_box, Polygon
 
 from folium import (Map, Popup, LatLngPopup, VegaLite, GeoJson,
                     GeoJsonTooltip, CircleMarker, LayerControl, FeatureGroup)
 from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value
 import branca.colormap as cm
 
-def leaflet_overview(items, chunktable=None, aoi=None):
+def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=None):
     ids = []
     tile = []
     times = []
@@ -30,14 +31,15 @@ def leaflet_overview(items, chunktable=None, aoi=None):
         'times': times,
         'assets': assets, },
         geometry=geometry,
-        crs='epsg:4326'
+        crs=f'epsg:4326'
     )
     # group by tiles and times
     gdf_tiles = gdf.groupby(['tile']).agg({
         # Merge geometries using unary_union
         'geometry': lambda x: s_shape(unary_union(x)),
     }).reset_index()
-    gdf_tiles.set_geometry('geometry', inplace=True, crs='epsg:4326')
+
+    gdf_tiles.set_geometry('geometry', inplace=True, crs=f'epsg:4326')
     gdf_ex = gdf.explode('assets')
     gdf_ex['assets'] = gdf_ex.assets.astype('category')
 
@@ -45,6 +47,9 @@ def leaflet_overview(items, chunktable=None, aoi=None):
     LatLngPopup().add_to(m)
 
     if aoi is not None:
+        if transform_to is not None:
+            aoi = transform(aoi, transform_to, include_z=False)
+            
         GeoJson(aoi,
                 name='AOI',
                 show=True,
@@ -61,6 +66,12 @@ def leaflet_overview(items, chunktable=None, aoi=None):
             ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89',
              '#26828e', '#31688e', '#3e4989', '#482878', '#440154'],
             vmin=0, vmax=21889)
+        if transform_to is not None:
+            geometries_chunktable = chunktable.geometry.apply(lambda x: transform(x, transform_to, include_z=False))
+            chunktable = gpd.GeoDataFrame(chunktable.drop(columns='geometry'),
+                                            geometry=geometries_chunktable,
+                                            crs='epsg:4326')
+            
         GeoJson(chunktable,
                 name='MCChunks',
                 show=True,

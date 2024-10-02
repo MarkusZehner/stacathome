@@ -20,7 +20,8 @@ from json import load as json_load
 from zarr.errors import ContainsGroupError
 from xarray import open_zarr as xr_open_zarr
 
-from shapely import from_geojson
+from pyproj import Transformer, Proj
+from shapely import from_geojson, transform
 from shapely.geometry import Point, box as s_box
 
 from dask import delayed
@@ -30,7 +31,7 @@ from dask_jobqueue import SLURMCluster
 from planetary_computer import sign as pc_sign
 from odc.stac import configure_rio, load as odc_load
 from pystac_client import Client as pystacClient
-from pystac import ItemCollection
+from pystac import ItemCollection, Item
 from odc.geo.geobox import GeoBox
 from odc.geo.xr import xr_zeros
 
@@ -77,7 +78,7 @@ class MaxiCube:
     """
 
     def __init__(self, aoi, path,
-                 crs=4326, resolution=0.00018,
+                 crs: int = 4326, resolution=0.00018,
                  chunksize_xy=256,
                  chunksize_t=-1,
                  url=None,
@@ -86,13 +87,26 @@ class MaxiCube:
                  save_name='stacathome_local_items.pkl',
                  zarr_path=None):
         # manage data structure
-        aoi, self.name = get_aoi_and_name(aoi)
+        self.name = aoi
         self.crs = crs
+        self.transform = None
+        if self.crs != 4326:
+            self.transform = get_transform(self.crs, 4326)
+            self.dimension_names = {'time': 'time',
+                                    'latitude': 'y',
+                                    'longitude': 'x'}
+        else:
+            self.dimension_names = {'time': 'time',
+                                    'latitude': 'latitude',
+                                    'longitude': 'longitude'}
+
+        self.aoi = self.get_aoi(aoi)
+
         self.resolution = resolution
         self.chunksize_xy = chunksize_xy
         self.chunksize_t = chunksize_t
-        self.geobox, self.aoi = get_geobox_from_aoi(
-            aoi, self.crs, self.resolution, self.chunksize_xy, return_aoi=True)
+        self.geobox = get_geobox_from_aoi(
+            self.aoi, self.crs, self.resolution, self.chunksize_xy)
         self.chunk_table = chunk_table_from_geobox(
             self.geobox, self.chunksize_xy, self.aoi)
         if not requested_bands:
@@ -122,6 +136,30 @@ class MaxiCube:
             self.construct_large_cube()
         else:
             self.zarr_path = None
+
+    def get_aoi(self, aoi):
+        if os_path.exists(aoi):
+            with open(aoi) as f:
+                json = json_load(f)
+        else:
+            json = get_countries_json(aoi)
+
+        json_crs = None
+        if 'properties' in json['features'][0] and 'crs' in json['features'][0]['properties']:
+            json_crs = json['features'][0]['properties']['crs']
+
+        aoi = from_geojson(
+            f'{json['features'][0]['geometry']}'.replace("'", '"'))
+
+        if json_crs is not None and json_crs != self.crs:
+
+            # project = Transformer.from_proj(
+            #     Proj(f'epsg:{json_crs}'), # source coordinate system
+            #     Proj(f'epsg:{self.crs}'), always_xy=True)
+            # part_transform = partial(self.__transform_coords, project=project)
+            aoi = transform(aoi, get_transform(
+                json_crs, self.crs), include_z=False)
+        return aoi
 
     def plot_chunk_table(self):
         """
@@ -211,6 +249,10 @@ class MaxiCube:
             raise UserWarning(
                 'Using url defined in function call - may differ from init')
         # catalog setup
+
+        if self.transform is not None:
+            subset = transform(subset, self.transform, include_z=False)
+
         catalog = pystacClient.open(url)
         found = catalog.search(
             intersects=subset,
@@ -275,9 +317,9 @@ class MaxiCube:
         if not items:
             items = self.items_local_global
         if plot_chunks:
-            return leaflet_overview(items, self.chunk_table.iloc[::subset_chunks_by], self.aoi)
+            return leaflet_overview(items, self.chunk_table.iloc[::subset_chunks_by], self.aoi, crs=self.crs, transform_to=self.transform)
         else:
-            return leaflet_overview(items, aoi=self.aoi)
+            return leaflet_overview(items, aoi=self.aoi, crs=self.crs, transform_to=self.transform)
 
     def download(self, items=None, use_dask=True, daskkwargs={}):
         """
@@ -399,12 +441,13 @@ class MaxiCube:
             The items to save.
         """
 
-        if not items:
-            if not self.req_items:
-                raise ValueError('Request and download items first!')
-            items = self.req_items
-        elif isinstance(items[0], list):
-            items = self.get_unique_elements(items)
+        if items is None and self.req_items is None:
+            raise ValueError('Request and download items first!')
+        elif items is not None and type(items[0])==ItemCollection:
+            self.req_items =  get_unique_elements(items)
+            
+        elif items is not None and type(items[0])==Item:
+            self.req_items = items
 
         self.compare_local(report=False)
         self.merge_items()
@@ -412,7 +455,19 @@ class MaxiCube:
         with open(os_path.join(self.path, self.save_name), 'wb') as f:
             pickle.dump(self.items_local_global, f)
 
-    def parallel_request(self, start_date, end_date, grid_size=.45):
+    def download(self, start_date, end_date, grid_size=None):
+        """
+        Intended wrapper to request, download and store items in one go.
+        Will request items in parallel, check them against local assets, download them in parallel and store them.
+        Uses the given AOI and chunk table to request items for a regular grid of points.
+        """
+        process = self._parallel_request(start_date, end_date, grid_size)
+        checked = self._check_parallel_request(process)
+        self._parallel_download(checked)
+        return process
+
+
+    def _parallel_request(self, start_date, end_date, grid_size=None):
         """
         Request items in parallel.
         Will request items for a regular grid of points in the aoi.
@@ -432,7 +487,15 @@ class MaxiCube:
         items: list
             The requested items.
         """
-        # determine maximum edges
+        # if self.crs != 4326 and (grid_size is None or grid_size < 1.):
+        #     raise UserWarning(
+        #         'Default grid size not suitable for non 4326 crs, please provide grid_size')
+        if grid_size is None and self.crs == 4326:
+            grid_size = 0.45
+        elif grid_size is None and self.crs != 4326:
+            grid_size = 50000
+            print('Assuming units of meters and grid size of 50 km for non 4326 crs!')
+
         lonmin, latmin, lonmax, latmax = self.aoi.bounds
 
         resolution = grid_size
@@ -445,13 +508,13 @@ class MaxiCube:
                    for point in points if self.aoi.contains(Point(*point))]
 
         request_partial = partial(request_items_parallel, start_date=start_date,
-                                  end_date=end_date, collection=self.collection, url=self.url)
+                                  end_date=end_date, collection=self.collection,
+                                  url=self.url, transform_to=self.transform)
         dask_bag = db.from_sequence(process).map(request_partial)
         items = dask_bag.compute()
-
         return items
 
-    def check_parallel_request(self, items):
+    def _check_parallel_request(self, items):
         """
         Check the items from a parallel request against the local assets.
 
@@ -471,7 +534,7 @@ class MaxiCube:
                                                            requested_bands=self.requested_bands)
         return filtered_requests
 
-    def parallel_download(self, items):
+    def _parallel_download(self, items):
         """
         Download items in parallel.
 
@@ -483,7 +546,7 @@ class MaxiCube:
         downloads = db.from_sequence(items).map(download_item)
         downloads.compute()
 
-    def load_otf_cube(self, items, subset, requested_bands=None, chunking=None, enlarge_by_n_chunks=0):
+    def load_otf_cube(self, items, subset, requested_bands=None, chunking=None, enlarge_by_n_chunks=0, drop_fill=False):
         """
         Load items on the fly into a cube.
 
@@ -510,9 +573,9 @@ class MaxiCube:
         if requested_bands is None:
             requested_bands = self.requested_bands
         if chunking is None:
-            chunking = {'time': self.chunksize_t,
-                        'latitude': self.chunksize_xy,
-                        'longitude': self.chunksize_xy}
+            chunking = {self.dimension_names['time']: self.chunksize_t,
+                        self.dimension_names['latitude']: self.chunksize_xy,
+                        self.dimension_names['longitude']: self.chunksize_xy}
 
         if isinstance(subset, int):
             subset, _ = self.subset(
@@ -523,7 +586,7 @@ class MaxiCube:
         elif isinstance(subset, GeoBox):
             subset = subset
 
-        return odc_load(
+        otf_cube =  odc_load(
             items,
             bands=requested_bands,
             chunks=chunking,
@@ -532,8 +595,15 @@ class MaxiCube:
             resampling='bilinear',
             groupby='solar_day',
         )
+        if drop_fill:
+            mean_over_time = otf_cube[requested_bands[0]].mean(
+                dim=[self.dimension_names['latitude'], self.dimension_names['longitude']])
+            otf_cube = otf_cube.isel(
+                time=np.where(mean_over_time != 0)[0])
+        return otf_cube
 
-    def construct_large_cube(self, zarr_path=None, start_date='2015-06-01', end_date='2026-01-01', chunking=None, overwrite=False):
+    def construct_large_cube(self, zarr_path=None, start_date='2015-06-01', end_date='2026-01-01',
+                             chunking=None, overwrite=False):
         """
         This cube is created empty, start and end date should contain entire planned time series.
 
@@ -546,7 +616,7 @@ class MaxiCube:
         end_date: str
             The end date of the time dimension.
         chunking: dict
-            The chunking of the data, dimension names are 'time', 'latitude', 'longitude'.
+            The chunking of the data, dimension names are 'time', 'latitude', 'longitude' for crs 4326, 'time', 'y', 'x' for utm.
         overwrite: bool
             If True, will overwrite the zarr store.
         """
@@ -559,11 +629,14 @@ class MaxiCube:
             self.zarr_path = zarr_path
 
         if chunking is None:
-            chunking = {'time': self.chunksize_t,
-                        'latitude': self.chunksize_xy, 'longitude': self.chunksize_xy}
+            chunking = {self.dimension_names['time']: self.chunksize_t,
+                        self.dimension_names['latitude']: self.chunksize_xy,
+                        self.dimension_names['longitude']: self.chunksize_xy}
         try:
             create_skeleton_zarr(self.geobox, zarr_path,
-                                 chunking=chunking,
+                                 chunking=(chunking[self.dimension_names['time']],
+                                           chunking[self.dimension_names['latitude']],
+                                           chunking[self.dimension_names['longitude']]),
                                  dtype=np.uint16, bands=self.requested_bands,
                                  start_date=start_date, end_date=end_date,
                                  t_freq='1D', overwrite=overwrite)
@@ -610,6 +683,10 @@ class MaxiCube:
             else:
                 items = self.items_local_global
 
+        if items is None:
+            raise ValueError(
+                'No items provided, request and download items first or provide items to the function')
+
         if isinstance(subset, int) or isinstance(subset, tuple):
             tasks = self.__fill_subset_into_large_data(subset, items, t_min_large_cube,
                                                        enlarge_by_n_chunks, dask)
@@ -653,8 +730,9 @@ class MaxiCube:
             subset, yx_index_slices = self.subset(
                 lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
 
-        req_chunking = {'time': -1, 'latitude': self.chunksize_xy,
-                        'longitude': self.chunksize_xy}
+        req_chunking = {self.dimension_names['time']: -1,
+                        self.dimension_names['latitude']: self.chunksize_xy,
+                        self.dimension_names['longitude']: self.chunksize_xy}
 
         otf_cube = self.load_otf_cube(items, subset,
                                       chunking=req_chunking)
@@ -674,8 +752,8 @@ class MaxiCube:
             min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
 
         for b in self.requested_bands:
-            for x in range(0, len(otf_cube.longitude), self.chunksize_xy):
-                for y in range(0, len(otf_cube.latitude), self.chunksize_xy):
+            for x in range(0, len(otf_cube[self.dimension_names['longitude']]), self.chunksize_xy):
+                for y in range(0, len(otf_cube[self.dimension_names['latitude']]), self.chunksize_xy):
                     if dask:
                         tasks.append(
                             delayed_store_chunks_to_zarr(otf_cube, self.zarr_path, b,
@@ -683,15 +761,14 @@ class MaxiCube:
                                                           t_insert_end),
                                                          yx_index_slices,
                                                          self.chunksize_xy,
-                                                         x, y)
+                                                         x, y, self.dimension_names)
                         )
                     else:
-                        print(yx_index_slices, x, y)
                         store_chunks_to_zarr(otf_cube, self.zarr_path, b,
                                              (t_insert_start, t_insert_end),
                                              yx_index_slices,
                                              self.chunksize_xy,
-                                             x, y)
+                                             x, y, self.dimension_names)
         if dask:
             return tasks
 
@@ -730,22 +807,38 @@ class MaxiCube:
                     ) - pd.to_datetime(t_min_large_cube).to_numpy()).astype('timedelta64[D]').astype(int)
                 time_slice = (t_slice_start, t_slice_end+1)
             chunk_data = get_slice_from_large_data(xr_open_zarr(
-                self.zarr_path, mask_and_scale=False), lat_slice=yx_index_slices[:2], lon_slice=yx_index_slices[2:], time_slice=time_slice)
+                self.zarr_path, mask_and_scale=False), lat_slice=yx_index_slices[:2], 
+                lon_slice=yx_index_slices[2:], time_slice=time_slice, dimension_names=self.dimension_names)
             if drop_fill:
-                mean_over_time = chunk_data[self.requested_bands[0]].mean(dim=['latitude', 'longitude'])
-                chunk_data = chunk_data.isel(time=np.where(mean_over_time != 0)[0])
+                mean_over_time = chunk_data[self.requested_bands[0]].mean(
+                    dim=[self.dimension_names['latitude'], self.dimension_names['longitude']])
+                chunk_data = chunk_data.isel(
+                    time=np.where(mean_over_time != 0)[0])
             return chunk_data
 
 
+def get_transform(from_crs, to_crs, always_xy=True):
+    project = Transformer.from_proj(
+        Proj(f'epsg:{from_crs}'),  # source coordinate system
+        Proj(f'epsg:{to_crs}'), always_xy=always_xy)
+    return partial(__transform_coords, project=project)
+
+
+def __transform_coords(x_y, project):
+    for i in range(len(x_y)):
+        x_y[i] = project.transform(x_y[i][0], x_y[i][1])
+    return x_y
+
+
 @delayed
-def delayed_store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y):
+def delayed_store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names):
     """
     delayed wrapper for store_chunks_to_zarr
     """
-    return store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y)
+    return store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names=dimension_names)
 
 
-def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y):
+def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names=None):
     """
     Store chunks to a zarr store.
     Uses region to store only the chunk.
@@ -770,15 +863,18 @@ def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices
         The x index.
     y: int
         The y index.
+    dimension_names: dict
+        The dimension names. default is {'time':'time', 'latitude':'latitude', 'longitude':'longitude'}.
+        for UTM crs use {'time':'time', 'latitude':'y', 'longitude':'x'}.
     """
-    (dataset[b].isel(longitude=slice(x, x+chunksize_xy),
-                     latitude=slice(y, y+chunksize_xy))
+    (dataset[b].isel({dimension_names['longitude']: slice(x, x+chunksize_xy),
+                      dimension_names['latitude']: slice(y, y+chunksize_xy)})
      .to_dataset(name=b)
      .to_zarr(zarr_store, mode='r+', write_empty_chunks=False,
               region={
-                  'time': slice(*t_index_slices),
-                  'latitude': slice(yx_index_slices[0]+y, yx_index_slices[0]+y+chunksize_xy),
-                  'longitude': slice(yx_index_slices[2]+x, yx_index_slices[2]+x+chunksize_xy)}
+                  dimension_names['time']: slice(*t_index_slices),
+                  dimension_names['latitude']: slice(yx_index_slices[0]+y, yx_index_slices[0]+y+chunksize_xy),
+                  dimension_names['longitude']: slice(yx_index_slices[2]+x, yx_index_slices[2]+x+chunksize_xy)}
               )
      )
 
@@ -803,31 +899,24 @@ def get_unique_elements(lists_of_objects):
     return out
 
 
-def request_items_parallel(lon_lat, start_date, end_date, url, collection):
+def request_items_parallel(lon_lat, start_date, end_date, url, collection, transform_to=None):
+    p = Point(lon_lat[0], lon_lat[1])
+    if transform_to is not None:
+        p = transform(p, transform_to, include_z=False)
     catalog = pystacClient.open(url)
-    return catalog.search(intersects=Point(lon_lat[0], lon_lat[1]),
+    return catalog.search(intersects=p,
                           datetime=f"{start_date}/{end_date}",
                           collections=[collection],
                           ).item_collection()
-
-
-def get_aoi_and_name(aoi):
-    if os_path.exists(aoi):
-        with open(aoi) as f:
-            d = json_load(f)
-        shape = from_geojson(
-            f'{d['features'][0]['geometry']}'.replace("'", '"'))
-    else:
-        shape = get_countries_json(aoi)
-    return shape, aoi
 
 
 def get_countries_json(name):
     if check_if_country_in_repo(name):
         url = f"https://raw.githubusercontent.com/georgique/world-geojson/main/countries/{
             name}.json"
-        r = requests_get(url)
-        return r.json()
+        json = requests_get(url).json()
+        json['features'][0]['properties']['crs'] = 4326
+        return json
 
 
 def check_if_country_in_repo(name):
@@ -921,8 +1010,8 @@ def create_skeleton_zarr(geobox, zarr_path,
         The geobox of the data
     zarr_path: str
         The path to the zarr store
-    chunksize_xy: int
-        The size of the x and y chunks
+    chunking: tuple
+        The chunking of the data, dimension order are 'time', 'latitude/y', 'longitude/x'
     dtype: numpy.dtype
         The datatype of the data
     bands: list
@@ -941,11 +1030,9 @@ def create_skeleton_zarr(geobox, zarr_path,
                               'B07', 'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP'])
 
     if chunking is None:
-        chunking = {'time': 1000,
-                    'latitude': 256,
-                    'longitude': 256}
+        chunking = (1000, 256, 256)
 
-    xr_empty = xr_zeros(geobox, dtype=dtype, chunks=(chunking['time'], chunking['latitude'], chunking['longitude']),
+    xr_empty = xr_zeros(geobox, dtype=dtype, chunks=chunking,
                         time=pd.date_range(start_date, end_date, freq=t_freq))
     xr_empty = xr_empty.to_dataset(name=bands[0])
     for band in bands:
@@ -956,14 +1043,7 @@ def create_skeleton_zarr(geobox, zarr_path,
                      write_empty_chunks=False, compute=False)
 
 
-def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False):
-    if type(aoi_shape) == str:
-        with open(aoi_shape) as f:
-            d = json_load(f)
-    else:
-        d = aoi_shape
-    aoi = from_geojson(f'{d['features'][0]['geometry']}'.replace("'", '"'))
-
+def get_geobox_from_aoi(aoi, epsg, resolution, chunksize):
     # buffer to adjust to chunksize
     bounds = aoi.buffer(resolution*chunksize/2).bounds
     geobox = GeoBox.from_bbox(
@@ -972,8 +1052,6 @@ def get_geobox_from_aoi(aoi_shape, epsg, resolution, chunksize, return_aoi=False
     # slice to be a multiple of chunksize
     geobox = geobox[slice(geobox.shape[0] % chunksize//2, -(chunksize-geobox.shape[0] % chunksize//2)),
                     slice(geobox.shape[1] % chunksize//2, -(chunksize-geobox.shape[1] % chunksize//2))]
-    if return_aoi:
-        return geobox, aoi
     return geobox
 
 
@@ -1150,11 +1228,14 @@ def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
     return gpd_locs
 
 
-def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None):
+def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None, dimension_names=None):
+    if not dimension_names:
+        dimension_names = {'time': 'time', 'latitude': 'latitude', 'longitude': 'longitude'}
+
     if time_slice:
-        return dataset.isel(time=slice(*time_slice),
-                            latitude=slice(*lat_slice),
-                            longitude=slice(*lon_slice))
+        return dataset.isel({dimension_names['time']: slice(*time_slice),
+                            dimension_names['latitude']: slice(*lat_slice),
+                            dimension_names['longitude']: slice(*lon_slice)})
     else:
-        return dataset.isel(latitude=slice(*lat_slice),
-                            longitude=slice(*lon_slice))
+        return dataset.isel({dimension_names['latitude']: slice(*lat_slice),
+                            dimension_names['longitude']: slice(*lon_slice)})
