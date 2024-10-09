@@ -13,28 +13,9 @@ from folium import (Map, Popup, LatLngPopup, VegaLite, GeoJson,
 from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value
 import branca.colormap as cm
 
-def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=None):
-    ids = []
-    tile = []
-    times = []
-    assets = []
-    geometry = []
-    for i in items:
-        ids.append(i.id)
-        tile.append(i.properties['s2:mgrs_tile'])
-        times.append(i.properties['datetime'])
-        assets.append(list(i.assets.keys()))
-        geometry.append(s_shape(i.geometry))
-    gdf = gpd.GeoDataFrame({
-        'id': ids,
-        'tile': tile,
-        'times': times,
-        'assets': assets, },
-        geometry=geometry,
-        crs=f'epsg:4326'
-    )
+def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
     # group by tiles and times
-    gdf_tiles = gdf.groupby(['tile']).agg({
+    gdf_tiles = gdf.groupby(['s2:mgrs_tile']).agg({
         # Merge geometries using unary_union
         'geometry': lambda x: s_shape(unary_union(x)),
     }).reset_index()
@@ -65,12 +46,7 @@ def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=No
         linear = cm.LinearColormap(
             ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89',
              '#26828e', '#31688e', '#3e4989', '#482878', '#440154'],
-            vmin=0, vmax=21889)
-        if transform_to is not None:
-            geometries_chunktable = chunktable.geometry.apply(lambda x: transform(x, transform_to, include_z=False))
-            chunktable = gpd.GeoDataFrame(chunktable.drop(columns='geometry'),
-                                            geometry=geometries_chunktable,
-                                            crs='epsg:4326')
+            vmin=0, vmax=21889)    
             
         GeoJson(chunktable,
                 name='MCChunks',
@@ -94,13 +70,13 @@ def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=No
                 ).add_to(m)
 
     tile_list = FeatureGroup(name='Tiles', control=True)
-    for t in np.unique(gdf.tile):
+    for t in np.unique(gdf_tiles['s2:mgrs_tile']):
         popup = Popup()
-        gdf_ex_sub = gdf_ex.loc[gdf_ex.tile == t]
-        gdf_area = gdf_tiles.loc[gdf_tiles.tile == t]
+        gdf_ex_sub = gdf_ex.loc[gdf_ex['s2:mgrs_tile'] == t]
+        gdf_area = gdf_tiles.loc[gdf_tiles['s2:mgrs_tile'] == t]
         # make the chart
-        tab = Chart(gdf_ex_sub).mark_point(filled=True).encode(
-            x=alt_X('times:T', title='Time', axis=Axis(format="%Y %B")),
+        tab = Chart(gdf_ex_sub[['datetime', 'assets']]).mark_point(filled=True).encode(
+            x=alt_X('datetime:T', title='Time', axis=Axis(format="%Y %B")),
             y=alt_Y('assets', type='nominal', title='Assets'),
             color=alt_value('#18334E'),
         ).properties(
@@ -109,11 +85,11 @@ def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=No
         ).interactive()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
+            times = gdf[gdf['s2:mgrs_tile'] == t].datetime.values
+            times.sort()
             pf_time = pd.DataFrame(
-                {'time': gdf[gdf.tile == t].times.values[::-1],
-                 'difference': (np.concatenate((np.diff(gdf[gdf.tile == t]
-                                                        .times.values.astype('datetime64[D]')[::-1])
-                                                .astype(np.float64), [np.nan])))}
+                {'time': times,
+                 'difference':(np.concatenate((np.diff(times.astype('datetime64[D]').astype(np.int16)), [0])))}
             )
         time_line = Chart(pf_time).mark_line().encode(
             x=alt_X('time:T', title='Time'),
@@ -147,7 +123,7 @@ def leaflet_overview(items, chunktable=None, aoi=None, crs=4326, transform_to=No
                     'weight': 5,             # Thicker border on hover
                     'fillOpacity': 0.7,      # Slightly more opaque when hovered
                 },
-                tooltip=GeoJsonTooltip(fields=['tile']),
+                tooltip=GeoJsonTooltip(fields=['s2:mgrs_tile'], aliases=['Tile']),
                 popup=popup,  # ENH: make the popup a funciton of the tile
                 ).add_to(tile_list)
     tile_list.add_to(m)

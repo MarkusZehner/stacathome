@@ -4,7 +4,8 @@ import dask
 from tqdm import tqdm
 import dask.bag
 import dask.backends
-from os import listdir, path as os_path, makedirs
+from os import listdir, path as os_path, makedirs, remove as os_remove
+import sys
 import pickle
 import copy
 
@@ -19,14 +20,18 @@ import geopandas as gpd
 from json import load as json_load
 from zarr.errors import ContainsGroupError
 from xarray import open_zarr as xr_open_zarr
+from rasterio.errors import WarpOperationError
+from rasterio._err import CPLE_AppDefinedError
 
 from pyproj import Transformer, Proj
 from shapely import from_geojson, transform
-from shapely.geometry import Point, box as s_box
+from shapely.geometry import Point, box as s_box, shape as s_shape
 
 from dask import delayed
-from dask.distributed import Client as daskClient
+from dask.distributed import Client as daskClient, wait
 from dask_jobqueue import SLURMCluster
+# import dask_geopandas as dg
+
 
 from planetary_computer import sign as pc_sign
 from odc.stac import configure_rio, load as odc_load
@@ -36,9 +41,18 @@ from odc.geo.geobox import GeoBox
 from odc.geo.xr import xr_zeros
 
 from .plot import leaflet_overview
+from .__version import __version__
 
 configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
+def load_maxicube(path):
+    with open(path, 'rb') as f:
+        mxc =  pickle.load(f)
+        if not isinstance(mxc, MaxiCube):
+            raise ValueError('File is not a MaxiCube')
+        if mxc._version != __version__:
+            raise ValueError('Version mismatch')
+        return mxc
 
 class MaxiCube:
     """
@@ -53,8 +67,8 @@ class MaxiCube:
 
     Parameters
     ----------
-    aoi: str or dict
-        The area of interest, either a country name, file path, or a geojson dict.
+    aoi: str
+        The area of interest, either a country name or file path to a geojson.
     path: str
         The path to the folder for this MaxiCube.
     crs: int, default 4326
@@ -77,16 +91,19 @@ class MaxiCube:
         The path to the zarr store.
     """
 
-    def __init__(self, aoi, path,
-                 crs: int = 4326, resolution=0.00018,
-                 chunksize_xy=256,
-                 chunksize_t=-1,
-                 url=None,
-                 collection='sentinel-2-l2a',
-                 requested_bands=None,
-                 save_name='stacathome_local_items.pkl',
-                 zarr_path=None):
+    def __init__(self, 
+                 aoi:str, 
+                 path:str,
+                 crs:int=4326, 
+                 resolution:float=0.00018,
+                 chunksize_xy:int=256,
+                 chunksize_t:int=-1,
+                 url:str=None,
+                 collection:str='sentinel-2-l2a',
+                 requested_bands:list[str]=None,
+                 zarr_path:str=None):
         # manage data structure
+        self._version = __version__
         self.name = aoi
         self.crs = crs
         self.transform = None
@@ -108,7 +125,8 @@ class MaxiCube:
         self.geobox = get_geobox_from_aoi(
             self.aoi, self.crs, self.resolution, self.chunksize_xy)
         self.chunk_table = chunk_table_from_geobox(
-            self.geobox, self.chunksize_xy, self.aoi)
+            self.geobox, self.chunksize_xy, self.crs, self.aoi)
+        self.chunk_table['timerange_in_zarr'] = np.empty((len(self.chunk_table), 0)).tolist()
         if not requested_bands:
             self.requested_bands = ['B02', 'B03', 'B04', 'B8A']
         else:
@@ -122,7 +140,6 @@ class MaxiCube:
         self.collection = collection
 
         self.path = path
-        self.save_name = save_name
         if self.path:
             self.items_local_global = self.local_assets()
         else:
@@ -137,8 +154,8 @@ class MaxiCube:
         else:
             self.zarr_path = None
 
-    def get_aoi(self, aoi):
-        if os_path.exists(aoi):
+    def get_aoi(self, aoi:str):
+        if isinstance(aoi, str) and os_path.exists(aoi):
             with open(aoi) as f:
                 json = json_load(f)
         else:
@@ -161,13 +178,21 @@ class MaxiCube:
                 json_crs, self.crs), include_z=False)
         return aoi
 
+    def items_as_geodataframe(self, items:list[Item]=None):
+        """
+        Return the items as a GeoDataFrame.
+        """
+        if items is None:
+            items = self.items_local_global
+        return items_to_dataframe(items)
+    
     def plot_chunk_table(self):
         """
         Plot the chunk centroids from the chunk table as a map.
         """
         return self.chunk_table.plot(column='chunk_id', cmap='viridis', legend=True, markersize=.05)
 
-    def subset(self, chunk_id=None, lat_lon=None, enlarge_by_n_chunks=0):
+    def subset(self, chunk_id:int=None, lat_lon:tuple[float]=None, enlarge_by_n_chunks:int=0):
         """
         Subset the geobox by chunk_id or lat_lon.
         Will adhere to the chunks.
@@ -200,8 +225,19 @@ class MaxiCube:
             raise ValueError('Must provide either chunk_id or lat_lon')
         return subset, yx_index_slices
 
-    def request_items(self, start_date, end_date,
-                      subset, enlarge_by_n_chunks=0,
+    # def _parse_subset(self, subset:int|tuple[float]|GeoBox, enlarge_by_n_chunks=0):
+    #     if isinstance(subset, int):
+    #         subset, yx_index_slices = self.subset(
+    #             chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+    #     elif isinstance(subset, tuple):
+    #         subset, yx_index_slices = self.subset(
+    #             lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+    #     elif isinstance(subset, GeoBox):
+    #         subset = subset
+    #     return subset, index_slices
+
+    def request_items(self, start_date:str, end_date:str,
+                      subset:int|tuple[float]|GeoBox, enlarge_by_n_chunks=0,
                       collection=None, url=None, new_request=False):
         """
         Request items from the STAC API.
@@ -226,6 +262,7 @@ class MaxiCube:
         new_request: bool
             If True, will request new items, if False will use the last request.
         """
+        # TODO: Subset parser?
         if subset is None and subset == 'full':
             subset = self.aoi
             print('Using full aoi this may take a while')
@@ -277,7 +314,7 @@ class MaxiCube:
         self.req_items_local, self.pending = check_request_against_local(self.req_items, self.path,
                                                                          requested_bands=self.requested_bands, report=report)
 
-    def local_assets(self, rerequest=False):
+    def local_assets(self, name='stacathome_local_items.pkl', rerequest=False):
         """
         Load local assets from the pickle file, or request them if not available.
 
@@ -291,8 +328,8 @@ class MaxiCube:
         items_local_global: list
             The local items.
         """
-        if not rerequest or os_path.exists(os_path.join(self.path, self.save_name)):
-            return pickle.load(open(os_path.join(self.path, self.save_name), 'rb'))
+        if not rerequest or os_path.exists(os_path.join(self.path, name)):
+            return pickle.load(open(os_path.join(self.path, name), 'rb'))
         return get_all_local_assets(self.path, self.collection, self.requested_bands)
 
     def plot(self, items=None, plot_chunks=True, subset_chunks_by=50):
@@ -316,12 +353,15 @@ class MaxiCube:
         # ENH: add option to plot requested/avail items
         if not items:
             items = self.items_local_global
-        if plot_chunks:
-            return leaflet_overview(items, self.chunk_table.iloc[::subset_chunks_by], self.aoi, crs=self.crs, transform_to=self.transform)
-        else:
-            return leaflet_overview(items, aoi=self.aoi, crs=self.crs, transform_to=self.transform)
 
-    def download(self, items=None, use_dask=True, daskkwargs={}):
+        chunks = None
+        if plot_chunks:
+            chunks = self.chunk_table.iloc[::subset_chunks_by]
+        
+        gdf = items_to_dataframe(items)
+        return leaflet_overview(gdf, chunks, aoi=self.aoi, transform_to=self.transform)
+
+    def download_requested(self, items=None, use_dask=True, daskkwargs={}):
         """
         Download the items.
         Will use self.req_items if no items are provided.
@@ -352,7 +392,7 @@ class MaxiCube:
         self.compare_local(report=False)
 
         if len(self.pending) == 0:
-            print('All items already downloaded')
+            print('All requested items already downloaded')
             return
 
         if use_dask:
@@ -378,32 +418,16 @@ class MaxiCube:
             # Check cluster status
             print(cluster)
 
-            # tasks = [dask.delayed(get_asset(*i)) for i in self.pending]
             downloads = db.from_sequence(self.pending).map(download_item)
             downloads.compute()
 
-            # if len(tasks) > 10000000:
-            #     # https://docs.dask.org/en/stable/delayed-best-practices.html
-            #     print('many tasks consider dask.bag')
-
-            # job_results = dask_compute(*tasks)
-
             client.close()
             cluster.close()
-
-            # to_pop = []
-            # for i, j in enumerate(job_results):
-            #     if j == None:
-            #         to_pop.append(i)
-            # for i in to_pop[::-1]:
-            #     self.pending.pop(i)
-
-            # if len(self.pending) == 0:
-            #     return 'All items downloaded'
-
         else:
             for i in tqdm(self.pending):
                 get_asset(*i)
+
+        self._update_items_local_global(items)
 
     def merge_items(self, items=None):
         """
@@ -418,7 +442,8 @@ class MaxiCube:
 
         if not items:
             if not self.req_items_local:
-                raise ValueError('Request and download items first!')
+                print('Request and download items first!')
+                return 
             items = self.req_items_local
         for i in self.req_items_local:
             if i not in self.items_local_global:
@@ -429,7 +454,7 @@ class MaxiCube:
                     if band not in self.items_local_global[idx].assets:
                         self.items_local_global[idx].assets[band] = i.assets[band]
 
-    def save_items(self, items=None):
+    def save_items(self, items=None, name='stacathome_local_items.pkl'):
         """
         Save the items to a pickle file.
         defaults to self.req_items, compares local assets first, then saves all local items.
@@ -441,8 +466,14 @@ class MaxiCube:
             The items to save.
         """
 
+        self._update_items_local_global(items)
+        with open(os_path.join(self.path, name), 'wb') as f:
+            pickle.dump(self.items_local_global, f)
+
+    def _update_items_local_global(self, items=None):
         if items is None and self.req_items is None:
-            raise ValueError('Request and download items first!')
+            print('No new data to save, request and download items first!')
+            return 
         elif items is not None and type(items[0])==ItemCollection:
             self.req_items =  get_unique_elements(items)
             
@@ -452,101 +483,31 @@ class MaxiCube:
         self.compare_local(report=False)
         self.merge_items()
 
-        with open(os_path.join(self.path, self.save_name), 'wb') as f:
-            pickle.dump(self.items_local_global, f)
+        self.items_local_global = [i for i in self.items_local_global if len(i.assets.keys()) > 0]
 
-    def download(self, start_date, end_date, grid_size=None):
+    def save(self, name='saved.maxicube'):
+        """
+        Save the MaxiCube Object to a pickle file.
+        """
+        self._update_items_local_global()
+        with open(os_path.join(self.path, f'{name}'), 'wb') as f:
+            pickle.dump(self, f)
+
+
+    def download_all(self, start_date, end_date, grid_size=None):
         """
         Intended wrapper to request, download and store items in one go.
         Will request items in parallel, check them against local assets, download them in parallel and store them.
         Uses the given AOI and chunk table to request items for a regular grid of points.
         """
-        process = self._parallel_request(start_date, end_date, grid_size)
-        checked = self._check_parallel_request(process)
-        self._parallel_download(checked)
+        process = _parallel_request(start_date, end_date, self.collection, self.url, 
+                                    self.transform, self.aoi, self.crs, grid_size)
+        checked = _check_parallel_request(process, self.requested_bands, self.path)
+        _parallel_download(checked)
+        self._update_items_local_global(process)
         return process
 
-
-    def _parallel_request(self, start_date, end_date, grid_size=None):
-        """
-        Request items in parallel.
-        Will request items for a regular grid of points in the aoi.
-
-        Parameters
-        ----------
-        start_date: str
-            The start date of the request.
-        end_date: str
-            The end date of the request.
-        grid_size: float
-            The size of the grid in crs units.
-            default is 0.45, ~50 km to catch S2 tiles of 110x110 km.
-
-        Returns
-        -------
-        items: list
-            The requested items.
-        """
-        # if self.crs != 4326 and (grid_size is None or grid_size < 1.):
-        #     raise UserWarning(
-        #         'Default grid size not suitable for non 4326 crs, please provide grid_size')
-        if grid_size is None and self.crs == 4326:
-            grid_size = 0.45
-        elif grid_size is None and self.crs != 4326:
-            grid_size = 50000
-            print('Assuming units of meters and grid size of 50 km for non 4326 crs!')
-
-        lonmin, latmin, lonmax, latmax = self.aoi.bounds
-
-        resolution = grid_size
-        X, Y = np.meshgrid(np.arange(latmin, latmax, resolution),
-                           np.arange(lonmin, lonmax, resolution))
-
-        points = list(zip(Y.flatten(), X.flatten()))
-
-        process = [(point)
-                   for point in points if self.aoi.contains(Point(*point))]
-
-        request_partial = partial(request_items_parallel, start_date=start_date,
-                                  end_date=end_date, collection=self.collection,
-                                  url=self.url, transform_to=self.transform)
-        dask_bag = db.from_sequence(process).map(request_partial)
-        items = dask_bag.compute()
-        return items
-
-    def _check_parallel_request(self, items):
-        """
-        Check the items from a parallel request against the local assets.
-
-        Parameters
-        ----------
-        items: list
-            The items to check.
-
-        Returns
-        -------
-        filtered_requests: list
-            The items that are not locally available.
-        """
-
-        unique = get_unique_elements(items)
-        _, filtered_requests = check_request_against_local(unique, out_path=self.path,
-                                                           requested_bands=self.requested_bands)
-        return filtered_requests
-
-    def _parallel_download(self, items):
-        """
-        Download items in parallel.
-
-        Parameters
-        ----------
-        items: list
-            The items to download.
-        """
-        downloads = db.from_sequence(items).map(download_item)
-        downloads.compute()
-
-    def load_otf_cube(self, items, subset, requested_bands=None, chunking=None, enlarge_by_n_chunks=0, drop_fill=False):
+    def load_otf_cube(self, subset, items=None, requested_bands=None, chunking=None, enlarge_by_n_chunks=0, drop_fill=False):
         """
         Load items on the fly into a cube.
 
@@ -577,6 +538,7 @@ class MaxiCube:
                         self.dimension_names['latitude']: self.chunksize_xy,
                         self.dimension_names['longitude']: self.chunksize_xy}
 
+        # TODO: Subset parser?
         if isinstance(subset, int):
             subset, _ = self.subset(
                 chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
@@ -586,6 +548,14 @@ class MaxiCube:
         elif isinstance(subset, GeoBox):
             subset = subset
 
+        if items is None:
+            items = self.items_local_global
+        gdf = items_to_dataframe(items, self.crs)
+        items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
+        
+        if len(items) == 0:
+            raise ValueError('No items in subset')
+        
         otf_cube =  odc_load(
             items,
             bands=requested_bands,
@@ -644,7 +614,7 @@ class MaxiCube:
             print(f'Zarr already exists at {
                   zarr_path}. Skipping creation. Set overwrite=True to overwrite.')
 
-    def fill_large_cube(self, subset=None, enlarge_by_n_chunks=0, kind='requested', items=None, dask=False):
+    def fill_large_cube(self, subset=None, enlarge_by_n_chunks=0, items=None, dask=False, client=None):
         """
         Fill the large cube with the requested items.
 
@@ -655,8 +625,6 @@ class MaxiCube:
             The subset to fill.
         enlarge_by_n_chunks: int
             The number of chunks to enlarge the subset by.
-        kind: str
-            The kind of items to fill the cube with, either 'requested' (=self.req_items_local, faster option) or 'all' (self.items_local_global).
         items: list 
             The items to fill the cube with.
         dask: bool
@@ -667,7 +635,6 @@ class MaxiCube:
         tasks: list
             The dask tasks.
         """
-        assert kind in ['requested', 'all']
 
         if self.zarr_path is None:
             raise ValueError(
@@ -678,14 +645,7 @@ class MaxiCube:
             t_min_large_cube = large_cube.time.min().values
 
         if items is None:
-            if kind == 'requested':
-                items = self.req_items_local
-            else:
-                items = self.items_local_global
-
-        if items is None:
-            raise ValueError(
-                'No items provided, request and download items first or provide items to the function')
+            items = self.items_local_global
 
         if isinstance(subset, int) or isinstance(subset, tuple):
             tasks = self.__fill_subset_into_large_data(subset, items, t_min_large_cube,
@@ -695,8 +655,68 @@ class MaxiCube:
             for s in subset:
                 tasks.extend(self.__fill_subset_into_large_data(s, items, t_min_large_cube,
                                                                 enlarge_by_n_chunks, dask))
+        elif subset is None:
+            print('Filling entire cube, this may take a while')
+            self._fill_all_large_data(client)
+            #tasks = []
+            #for s in range(len(self.chunk_table)):
+            #    tasks.append(delayed(self.__fill_subset_into_large_data(s, self.items_local_global, t_min_large_cube,
+            #                                                    0, False)))
+            #tasks = db.from_delayed(tasks)
+            return
+        
         if dask:
             return tasks
+
+    def _fill_all_large_data(self, client):
+        """
+        Fill the entire cube with the local items using given chunking.
+        """
+        #gdf = dg.from_geopandas(self.items_as_geodataframe(), npartitions=20)
+        items_gdf = client.scatter(self.items_as_geodataframe())
+        req_chunking = {self.dimension_names['time']: -1,
+                        self.dimension_names['latitude']: self.chunksize_xy,
+                        self.dimension_names['longitude']: self.chunksize_xy}
+
+        t_min_large_cube = xr_open_zarr(self.zarr_path).time.min().values
+
+        print('prepare subsets')
+        partial_load_otf_subset = partial(write_otf_subset, tmin=t_min_large_cube,
+                                        zarr_path=self.zarr_path, req_chunking=req_chunking, 
+                                        dimension_names=self.dimension_names)
+        subset_slice_id = []
+        delayed_write = []
+        futures = []
+        for i in range(len(self.chunk_table)): 
+            subset, slice_ = self.subset(i)
+            #subset_slice_id.append((subset, slice, i))
+            
+                #subset_items.append((subset, items, slice, i))
+            future = client.submit(partial_load_otf_subset, (subset, slice_, i, items_gdf))
+            futures.append(future)
+                
+            # subset_slice_id.append((subset, slice, i))
+            # delayed_write.append(delayed(partial_load_otf_subset)((subset, slice, i)))
+            # delayed_write.append(delayed(partial_load_otf_subset)((subset, gdf, slice, i)))
+
+ 
+        #print('mapping dask tasks')
+        # partial_load_otf_subset = partial(load_otf_subset, tmin=t_min_large_cube,
+        #                                 zarr_path=self.zarr_path, req_chunking=req_chunking, dimension_names=self.dimension_names)
+        #daskbag = db.from_sequence(subset_slice_id, partition_size=10).map(partial_load_otf_subset)
+        #daskbag = db.from_delayed(delayed_write)
+        print('computing dask tasks')
+        #futures = client.gather(futures)
+        wait(futures)
+        #print('computing dask tasks')
+        #results = daskbag.compute()
+        #print('updating chunk table')
+        #return results
+        # for d in tqdm(results):
+        #     self.chunk_table.loc[d[0], 'timerange_in_zarr'].append([np.datetime_as_string(d[1], unit='D'),
+        #                                                         np.datetime_as_string(d[2], unit='D')])
+        #return futures
+
 
     def __fill_subset_into_large_data(self, subset, items, t_min_large_cube, enlarge_by_n_chunks, dask=False):
         """
@@ -721,8 +741,10 @@ class MaxiCube:
             The dask tasks.
         """
         tasks = []
+
+        # TODO: Subset parser?
         if subset is None:
-            subset = self.geobox
+            subset = self.aoi
         elif isinstance(subset, int):
             subset, yx_index_slices = self.subset(
                 chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
@@ -734,14 +756,29 @@ class MaxiCube:
                         self.dimension_names['latitude']: self.chunksize_xy,
                         self.dimension_names['longitude']: self.chunksize_xy}
 
-        otf_cube = self.load_otf_cube(items, subset,
-                                      chunking=req_chunking)
+        try:
+            otf_cube = self.load_otf_cube(subset, items,
+                                          chunking=req_chunking)
+        except ValueError as e:
+            print(e)
+            return
 
         otf_cube = otf_cube.drop_vars(['spatial_ref'])
         otf_cube['time'] = otf_cube.time.dt.floor('D')
 
         min_time = otf_cube['time'].min().values
         max_time = otf_cube['time'].max().values
+
+        # add time range saved of chunk in chunk table
+        self.chunk_table.loc[
+            self.chunk_table.clip(
+                subset.boundingbox).index
+                ]['timerange_in_zarr'] = self.chunk_table.loc[
+                    self.chunk_table.clip(
+                        subset.boundingbox).index
+                        ]['timerange_in_zarr'].apply(
+                            lambda x: x.append([min_time,max_time
+                                                ]))
 
         t_insert_start = (min_time - pd.to_datetime(t_min_large_cube).to_numpy()
                           ).astype('timedelta64[D]').astype(int)
@@ -791,12 +828,14 @@ class MaxiCube:
             The chunk data.
         """
         if self.zarr_path:
+            # TODO: Subset parser?
             if isinstance(chunk_id, int):
                 _, yx_index_slices = self.subset(
                     chunk_id=chunk_id)
             elif isinstance(chunk_id, tuple):
                 _, yx_index_slices = self.subset(
                     lat_lon=chunk_id)
+                
             if time_slice is not None:
                 if isinstance(time_slice[0], str):
                     large_cube = xr_open_zarr(self.zarr_path)
@@ -885,7 +924,16 @@ def download_item(item):
 
 def get_asset(href, save_path):
     makedirs(os_path.dirname(save_path), exist_ok=True)
-    urlretrieve(pc_sign(href), save_path)
+    try:
+        urlretrieve(pc_sign(href), save_path)
+    except KeyboardInterrupt:
+        if os_path.exists(save_path):
+            try:
+                os_remove(save_path)
+            except Exception as e:
+                print(f'Error during cleanup of file {save_path}:', e)
+    except Exception as e:
+        print(f'Error downloading {href}:', e)
 
 
 def get_unique_elements(lists_of_objects):
@@ -1058,12 +1106,12 @@ def get_geobox_from_aoi(aoi, epsg, resolution, chunksize):
 def make_valid_slices_within_geobox(geobox, index_slices):
     if index_slices[0] < 0:
         index_slices[0] = 0
-    if index_slices[1] > geobox.shape[1]:
-        index_slices[1] = geobox.shape[1]
+    if index_slices[1] > geobox.shape[0]:
+        index_slices[1] = geobox.shape[0]
     if index_slices[2] < 0:
         index_slices[2] = 0
-    if index_slices[3] > geobox.shape[0]:
-        index_slices[3] = geobox.shape[0]
+    if index_slices[3] > geobox.shape[1]:
+        index_slices[3] = geobox.shape[1]
     return index_slices
 
 
@@ -1123,33 +1171,34 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
     missing_assets = 0
     for i in range(len(local_items)):
         downloaded = True
-        if os_path.exists(os_path.join(out_path, next(iter(local_items[i].assets.values())).href.split("?")[0].split("/")[-6])):
-            for b in requested_bands:
-                try:
-                    # check if the file is already downloaded
-                    # if yes, add path to local_items
+        if len(local_items[i].assets.keys()) > 0: 
+            if os_path.exists(os_path.join(out_path, next(iter(local_items[i].assets.values())).href.split("?")[0].split("/")[-6])):
+                for b in requested_bands:
+                    try:
+                        # check if the file is already downloaded
+                        # if yes, add path to local_items
+                        save_path = os_path.join(*[out_path] +
+                                                local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
+                        # check_sentinel2_data_exists_with_min_size(save_path):
+                        if os_path.exists(save_path):
+                            local_items[i].assets[b].href = save_path
+                        else:
+                            to_download.append(
+                                (local_items[i].assets[b].href, save_path))
+                            missing_assets += 1
+                            downloaded = False
+                            del local_items[i].assets[b]
+                    except KeyError as e:
+                        pass
+                        # print(f'Asset {b} not found in item {local_items[i].id}')
+            else:
+                for b in requested_bands:
                     save_path = os_path.join(*[out_path] +
-                                             local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
-                    # check_sentinel2_data_exists_with_min_size(save_path):
-                    if os_path.exists(save_path):
-                        local_items[i].assets[b].href = save_path
-                    else:
-                        to_download.append(
-                            (local_items[i].assets[b].href, save_path))
-                        missing_assets += 1
-                        downloaded = False
-                        del local_items[i].assets[b]
-                except KeyError as e:
-                    pass
-                    # print(f'Asset {b} not found in item {local_items[i].id}')
-        else:
-            for b in requested_bands:
-                save_path = os_path.join(*[out_path] +
-                                         local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
-                to_download.append((local_items[i].assets[b].href, save_path))
-                del local_items[i].assets[b]
-                missing_assets += 1
-            downloaded = False
+                                            local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
+                    to_download.append((local_items[i].assets[b].href, save_path))
+                    del local_items[i].assets[b]
+                    missing_assets += 1
+                downloaded = False
 
         for b in ingnore_assets:
             try:
@@ -1161,7 +1210,7 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
             not_downloaded_items.append(local_items[i])
 
         # if set is only ignore_assets, then we don't have the data
-        if set(local_items[i].assets.keys()) == set(ingnore_assets):
+        if set(local_items[i].assets.keys()) == set(ingnore_assets) or len(local_items[i].assets.keys()) == 0:
             idx_to_pop.append(i)
 
     for i in idx_to_pop[::-1]:
@@ -1179,6 +1228,7 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
 
 def get_all_local_assets(out_path, collection='sentinel-2-l2a', requested_bands=None):
     files = listdir(out_path)
+    # S--2 specific naming scheme
     files = [f[:27] + f[33:-5] for f in files if f.endswith('.SAFE')]
 
     stac = "https://planetarycomputer.microsoft.com/api/stac/v1"
@@ -1197,7 +1247,7 @@ def __lat_lon_from_geobox(geobox, x, y):
     return (a[2], a[5])
 
 
-def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
+def chunk_table_from_geobox(geobox, chunksize_xy, crs=4326, aoi=None):
     num_lon_chunks = geobox.shape.y//chunksize_xy
     num_lat_chunks = geobox.shape.x//chunksize_xy
 
@@ -1219,7 +1269,7 @@ def chunk_table_from_geobox(geobox, chunksize_xy, aoi=None):
     gpd_locs = gpd.GeoDataFrame(df_locs,
                                 geometry=gpd.points_from_xy(df_locs.lon_coord,
                                                             df_locs.lat_coord),
-                                crs="EPSG:4326")
+                                crs=f"EPSG:{crs}")
     if aoi:
         gpd_locs = gpd_locs.clip(aoi)
         gpd_locs = gpd_locs.sort_values(
@@ -1239,3 +1289,267 @@ def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None, di
     else:
         return dataset.isel({dimension_names['latitude']: slice(*lat_slice),
                             dimension_names['longitude']: slice(*lon_slice)})
+
+
+def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, crs, 
+                      grid_size=None, ):
+    """
+    Request items in parallel.
+    Will request items for a regular grid of points in the aoi.
+
+    Parameters
+    ----------
+    start_date: str
+        The start date of the request.
+    end_date: str
+        The end date of the request.
+    grid_size: float
+        The size of the grid in crs units.
+        default is 0.45, ~50 km to catch S2 tiles of 110x110 km.
+
+    Returns
+    -------
+    items: list
+        The requested items.
+    """
+    # if self.crs != 4326 and (grid_size is None or grid_size < 1.):
+    #     raise UserWarning(
+    #         'Default grid size not suitable for non 4326 crs, please provide grid_size')
+    if grid_size is None and crs == 4326:
+        grid_size = 0.45
+    elif grid_size is None and crs != 4326:
+        grid_size = 50000
+        print('Assuming units of meters and grid size of 50 km for non 4326 crs!')
+
+    lonmin, latmin, lonmax, latmax = aoi.bounds
+
+    resolution = grid_size
+    X, Y = np.meshgrid(np.arange(latmin, latmax, resolution),
+                        np.arange(lonmin, lonmax, resolution))
+
+    points = list(zip(Y.flatten(), X.flatten()))
+
+    process = [(point)
+                for point in points if aoi.contains(Point(*point))]
+
+    request_partial = partial(request_items_parallel, start_date=start_date,
+                                end_date=end_date, collection=collection,
+                                url=url, transform_to=transform_to)
+    dask_bag = db.from_sequence(process).map(request_partial)
+    items = dask_bag.compute()
+    return items
+
+
+def _check_parallel_request(items, requested_bands, path):
+    """
+    Check the items from a parallel request against the local assets.
+
+    Parameters
+    ----------
+    items: list
+        The items to check.
+
+    Returns
+    -------
+    filtered_requests: list
+        The items that are not locally available.
+    """
+
+    unique = get_unique_elements(items)
+    _, filtered_requests = check_request_against_local(unique, out_path=path,
+                                                        requested_bands=requested_bands)
+    return filtered_requests
+
+
+def _parallel_download(items):
+    """
+    Download items in parallel.
+
+    Parameters
+    ----------
+    items: list
+        The items to download.
+    """
+    downloads = db.from_sequence(items).map(download_item)
+    downloads.compute()
+
+
+def items_to_dataframe(items, to_crs=None):
+    """
+    Convert a list of STAC items to a GeoDataFrame
+    
+    Parameters
+    ----------
+    items : list
+        List of STAC items
+    crs : str, default 'EPSG:4326' as the stac items are in WGS84
+        CRS of the GeoDataFrame
+
+    Returns
+    -------
+    gdf : GeoDataFrame
+        GeoDataFrame with the STAC items
+    """
+    d = []
+    asset_id = []
+    geometry = []
+    assets = []
+    for i in items:
+        d.append(i.properties)
+        asset_id.append(i.id)
+        assets.append(list(i.assets.keys()))
+        geometry.append(s_shape(i.geometry))
+    gdf = gpd.GeoDataFrame(d, geometry=geometry, crs='EPSG:4326')
+    gdf['asset_id'] = asset_id
+    gdf['assets'] = assets
+    gdf['asset_items'] = items
+    if to_crs is not None:
+        gdf = gdf.to_crs(f'EPSG:{to_crs}')
+    return gdf
+
+    
+def _load_otf_cube_bulk(subset, filtered_items, requested_bands=None, chunking=None):
+    """
+    Load items on the fly into a cube.
+
+    provides a cube with the requested bands.
+    If subset is a chunk id (int) or lat_lon(tuple) chunked according to the chunking, or to a provided geobox.
+
+    Parameters
+    ----------
+    subset: GeoBox
+        The geobox to subset the data to.
+    filtered_items: list of Items 
+        filtered items to load.
+
+    Returns
+    -------
+    otf_cube: xarray.Dataset
+        The loaded cube.
+    """
+    if requested_bands is None:
+        requested_bands = ['B02', 'B03', 'B04', 'B8A']
+
+    avail_bands = list(set([k for i in filtered_items for k in i.assets.keys()]))
+    [a for a in avail_bands if a in requested_bands]
+
+    if chunking is None:    
+        chunking = {'time': 1000,
+                    'latitude': 256,
+                    'longitude': 256}
+    
+    otf_cube =  odc_load(
+        filtered_items,
+        bands=avail_bands,
+        chunks=chunking,
+        geobox=subset,
+        dtype='uint16',
+        resampling='bilinear',
+        groupby='solar_day',
+    )
+    otf_cube = otf_cube.drop_vars(['spatial_ref'])
+    otf_cube['time'] = otf_cube.time.dt.floor('D')
+
+    return otf_cube
+
+# def _write_otf_cube_bulk(cube, t_min_large_cube, req_chunking, slices, zarr_path, chunksize_xy=256, dimension_names=None):
+#     if dimension_names is None:
+#         dimension_names = {'time':'time', 'latitude':'latitude', 'longitude':'longitude'}
+#     min_time = cube['time'].min().values
+#     max_time = cube['time'].max().values
+
+#     cube = cube.reindex(time=pd.date_range(
+#         min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
+
+#     t_insert_start = (min_time - pd.to_datetime(t_min_large_cube).to_numpy()
+#                         ).astype('timedelta64[D]').astype(int)
+#     t_insert_end = (max_time - pd.to_datetime(t_min_large_cube).to_numpy()
+#                     ).astype('timedelta64[D]').astype(int) + 1
+#     for b in cube.data_vars:
+#         store_chunks_to_zarr(cube, zarr_path, b,
+#                                 (t_insert_start, t_insert_end),
+#                                 slices,
+#                                 chunksize_xy,
+#                                 0, 0, 
+#                                 dimension_names)
+#     return min_time, max_time
+
+
+def write_otf_subset(subset_slices_id_gdf, tmin, zarr_path, req_chunking, dimension_names):
+    subset, slices, chunk_id, gdf = subset_slices_id_gdf
+
+    items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
+    # local_gdf = gdf.copy()
+    if len(items) == 0:
+        #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append(['No items in subset'])
+        return chunk_id, 0, 0, ['No items in subset']
+    #items = gdf.clip(subset.boundingbox)['asset_items'].compute().to_list()
+    #if len(items) == 0:
+    #    return chunk_id, None, None, 'No items in subset'
+    cube = _load_otf_cube_bulk(subset=subset, 
+                               filtered_items=items, 
+                               requested_bands=None,
+                               chunking=req_chunking)
+
+    min_time = cube['time'].min().values
+    max_time = cube['time'].max().values
+
+    cube = cube.reindex(time=pd.date_range(
+        min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
+
+    t_insert_start = (min_time - pd.to_datetime(tmin).to_numpy()
+                        ).astype('timedelta64[D]').astype(int)
+    t_insert_end = (max_time - pd.to_datetime(tmin).to_numpy()
+                    ).astype('timedelta64[D]').astype(int) + 1
+    
+    try:
+        cube.to_zarr(zarr_path, mode='r+', write_empty_chunks=False,
+                        region={
+                        dimension_names['time']: slice(t_insert_start, t_insert_end),
+                        dimension_names['latitude']: slice(slices[0],
+                                                            slices[1]),
+                        dimension_names['longitude']: slice(slices[2],
+                                                            slices[3])}
+                    )
+        
+    # except CPLE_AppDefinedError as e:
+    #     #return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
+    #     #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
+    #     #return chunk_id, 0, 0, f'{e}'
+    #     return None
+    except WarpOperationError as e:
+        # return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
+        #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
+        #return chunk_id, 0, 0, f'{e}'
+        return None
+    except Exception as e:
+        # return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
+        # local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
+        #return chunk_id, 0, 0, f'{e}'
+        return None
+    #     print(e)
+    # for b in cube.data_vars:
+    #     store_chunks_to_zarr(cube, zarr_path, b,
+    #                             (t_insert_start, t_insert_end),
+    #                             slices,
+    #                             req_chunking[dimension_names['latitude']],
+    #                             0, 0, 
+    #                             dimension_names)
+        
+    #return chunk_id, min_time, max_time
+    #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([np.datetime_as_string(min_time, unit='D'),
+    #                                                     np.datetime_as_string(max_time, unit='D')])
+    # return (chunk_id, np.datetime_as_string(min_time, unit='D'), 
+    #         np.datetime_as_string(max_time, unit='D'), 'sucess')
+    return None
+
+
+def get_size_of_list_elements(lst):
+    sizes = [(i, sys.getsizeof(item)) for i, item in enumerate(lst)]
+    total_size = sum(size for _, size in sizes)
+    
+    for idx, size in sizes:
+        print(f"Item {idx} size: {size} bytes")
+    
+    print(f"Total size of the list elements: {total_size} bytes")
+    return total_size

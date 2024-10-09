@@ -22,22 +22,22 @@ install_requires = [
     'tqdm',
     'xarray',
     'zarr',
-    ]
+]
 
 
-setup(name='stacathome', 
-        version='0.0.1',
-        description="stacathome",
-        author="Markus Zehner",
-        author_email="mzehner@bgc-jena.mpg.de",
-        url="",
-        long_description=long_description,
-        long_description_content_type="text/markdown",
-        classifiers=[
-                "Intended Audience :: Science/Research",
-                "License :: OSI Approved :: MIT License",
-                "Programming Language :: Python :: 3"
-                 ],
-        packages=['stacathome'],
-        install_requires=install_requires,
-        )
+setup(name='stacathome',
+      version='0.0.1',
+      description="stacathome",
+      author="Markus Zehner",
+      author_email="mzehner@bgc-jena.mpg.de",
+      url="",
+      long_description=long_description,
+      long_description_content_type="text/markdown",
+      classifiers=[
+          "Intended Audience :: Science/Research",
+          "License :: OSI Approved :: MIT License",
+          "Programming Language :: Python :: 3"
+      ],
+      packages=['stacathome'],
+      install_requires=install_requires,
+      )
