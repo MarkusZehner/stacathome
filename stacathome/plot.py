@@ -9,11 +9,14 @@ from shapely.ops import unary_union
 from shapely.geometry import shape as s_shape, Point, box as s_box, Polygon
 
 from folium import (Map, Popup, LatLngPopup, VegaLite, GeoJson,
-                    GeoJsonTooltip, CircleMarker, LayerControl, FeatureGroup)
-from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value
+                    GeoJsonTooltip, CircleMarker, LayerControl, FeatureGroup,
+                    GeoJsonPopup)
+from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value # , data_transformers
 import branca.colormap as cm
 
+
 def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
+    # data_transformers.enable("vegafusion")
     # group by tiles and times
     gdf_tiles = gdf.groupby(['s2:mgrs_tile']).agg({
         # Merge geometries using unary_union
@@ -67,6 +70,8 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
                 },
                 tooltip=GeoJsonTooltip(
                     fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                popup=GeoJsonPopup(
+                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
                 ).add_to(m)
 
     tile_list = FeatureGroup(name='Tiles', control=True)
@@ -100,12 +105,13 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
         ).properties(
             width=600, height=100,
         )
-        vega_lite = VegaLite(
-            tab + time_line,
-            width="100%",
-            height="100%",
-        )
-        vega_lite.add_to(popup)
+        # vega_lite = VegaLite(
+        #     time_line, # tab + time_line,
+        #     #tab.to_json(format='vega') + time_line.to_json(format='vega'),
+        #     width="100%",
+        #     height="100%",
+        # )
+        # vega_lite.add_to(popup)
 
         GeoJson(gdf_area,
                 name=f'Tile {t}',

@@ -25,11 +25,11 @@ from rasterio._err import CPLE_AppDefinedError
 
 from pyproj import Transformer, Proj
 from shapely import from_geojson, transform
-from shapely.geometry import Point, box as s_box, shape as s_shape
+from shapely.geometry import Point, box as s_box, shape as s_shape, Polygon
 
 from dask import delayed
 from dask.distributed import Client as daskClient, wait
-from dask_jobqueue import SLURMCluster
+#from dask_jobqueue import SLURMCluster
 # import dask_geopandas as dg
 
 
@@ -396,33 +396,35 @@ class MaxiCube:
             return
 
         if use_dask:
-            # Create a SLURM cluster
-            cluster = SLURMCluster(
-                queue=daskkwargs['queue'] if 'queue' in daskkwargs else 'work',
-                cores=daskkwargs['cores'] if 'cores' in daskkwargs else 1,
-                memory=daskkwargs['memory'] if 'memory' in daskkwargs else '500MB',
-                walltime=daskkwargs['walltime'] if 'walltime' in daskkwargs else '03:00:00',
-            )
+            print('deprecated')
+            # # Create a SLURM cluster
+            # cluster = SLURMCluster(
+            #     queue=daskkwargs['queue'] if 'queue' in daskkwargs else 'work',
+            #     cores=daskkwargs['cores'] if 'cores' in daskkwargs else 1,
+            #     processes=daskkwargs['processes'] if 'processes' in daskkwargs else 1,
+            #     memory=daskkwargs['memory'] if 'memory' in daskkwargs else '500MB',
+            #     walltime=daskkwargs['walltime'] if 'walltime' in daskkwargs else '03:00:00',
+            # )
 
-            if 'min_workers' in daskkwargs and 'max_workers' in daskkwargs:
-                cluster.adapt(
-                    minimum=daskkwargs['min_workers'], maximum=daskkwargs['max_workers'])
-            elif 'num_workers' in daskkwargs:
-                cluster.scale(jobs=daskkwargs['num_workers'])
-            else:
-                cluster.adapt(minimum=1, maximum=20)
+            # if 'min_workers' in daskkwargs and 'max_workers' in daskkwargs:
+            #     cluster.adapt(
+            #         minimum=daskkwargs['min_workers'], maximum=daskkwargs['max_workers'])
+            # elif 'num_workers' in daskkwargs:
+            #     cluster.scale(jobs=daskkwargs['num_workers'])
+            # else:
+            #     cluster.adapt(minimum=1, maximum=20)
 
-            # Create a Dask client that connects to the cluster
-            client = daskClient(cluster)
+            # # Create a Dask client that connects to the cluster
+            # client = daskClient(cluster)
 
-            # Check cluster status
-            print(cluster)
+            # # Check cluster status
+            # print(cluster)
 
-            downloads = db.from_sequence(self.pending).map(download_item)
-            downloads.compute()
+            # downloads = db.from_sequence(self.pending).map(download_item)
+            # downloads.compute()
 
-            client.close()
-            cluster.close()
+            # client.close()
+            # cluster.close()
         else:
             for i in tqdm(self.pending):
                 get_asset(*i)
@@ -472,8 +474,7 @@ class MaxiCube:
 
     def _update_items_local_global(self, items=None):
         if items is None and self.req_items is None:
-            print('No new data to save, request and download items first!')
-            return 
+            self.req_items = self.items_local_global
         elif items is not None and type(items[0])==ItemCollection:
             self.req_items =  get_unique_elements(items)
             
@@ -494,15 +495,38 @@ class MaxiCube:
             pickle.dump(self, f)
 
 
-    def download_all(self, start_date, end_date, grid_size=None):
+    def download_all(self, start_date, end_date, 
+                     subset=None, enlarge_by_n_chunks=0,
+                     grid_size=None, subdivision=1):
         """
         Intended wrapper to request, download and store items in one go.
         Will request items in parallel, check them against local assets, download them in parallel and store them.
         Uses the given AOI and chunk table to request items for a regular grid of points.
         """
+        # TODO: Subset parser?
+        if subset is None:
+            subset = self.aoi
+            print('Using full aoi this may take a while')
+        elif isinstance(subset, int):
+            subset, _ = self.subset(chunk_id=subset,
+                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset = s_box(*subset.boundingbox)
+        elif isinstance(subset, tuple):
+            subset, _ = self.subset(lat_lon=subset,
+                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset = s_box(*subset.boundingbox)
+        elif isinstance(subset, GeoBox):
+            subset = s_box(*subset.boundingbox)
+        elif isinstance(subset, Polygon):
+            subset = subset
         process = _parallel_request(start_date, end_date, self.collection, self.url, 
-                                    self.transform, self.aoi, self.crs, grid_size)
+                                    self.transform, subset, self.crs, grid_size)
         checked = _check_parallel_request(process, self.requested_bands, self.path)
+        if len(checked) == 0:
+            print('No new items to download')
+            return process
+        if subdivision > 1:
+            checked = [checked[i:i + subdivision] for i in range(0, len(checked), subdivision)]
         _parallel_download(checked)
         self._update_items_local_global(process)
         return process
@@ -614,7 +638,8 @@ class MaxiCube:
             print(f'Zarr already exists at {
                   zarr_path}. Skipping creation. Set overwrite=True to overwrite.')
 
-    def fill_large_cube(self, subset=None, enlarge_by_n_chunks=0, items=None, dask=False, client=None):
+    def fill_large_cube(self, subset=None, enlarge_by_n_chunks=0, 
+                        items=None, dask=False):
         """
         Fill the large cube with the requested items.
 
@@ -657,23 +682,23 @@ class MaxiCube:
                                                                 enlarge_by_n_chunks, dask))
         elif subset is None:
             print('Filling entire cube, this may take a while')
-            self._fill_all_large_data(client)
+            res = self._fill_all_large_data()
             #tasks = []
             #for s in range(len(self.chunk_table)):
             #    tasks.append(delayed(self.__fill_subset_into_large_data(s, self.items_local_global, t_min_large_cube,
             #                                                    0, False)))
             #tasks = db.from_delayed(tasks)
-            return
+            return res
         
         if dask:
             return tasks
 
-    def _fill_all_large_data(self, client):
+    def _fill_all_large_data(self, subdivision=1):
         """
         Fill the entire cube with the local items using given chunking.
         """
         #gdf = dg.from_geopandas(self.items_as_geodataframe(), npartitions=20)
-        items_gdf = client.scatter(self.items_as_geodataframe())
+        items_gdf = self.items_as_geodataframe() #client.scatter(self.items_as_geodataframe())
         req_chunking = {self.dimension_names['time']: -1,
                         self.dimension_names['latitude']: self.chunksize_xy,
                         self.dimension_names['longitude']: self.chunksize_xy}
@@ -681,41 +706,49 @@ class MaxiCube:
         t_min_large_cube = xr_open_zarr(self.zarr_path).time.min().values
 
         print('prepare subsets')
-        partial_load_otf_subset = partial(write_otf_subset, tmin=t_min_large_cube,
-                                        zarr_path=self.zarr_path, req_chunking=req_chunking, 
-                                        dimension_names=self.dimension_names)
-        subset_slice_id = []
-        delayed_write = []
+        partial_load_otf_subset = partial(write_otf_subset,
+                                          tmin=t_min_large_cube,
+                                          zarr_path=self.zarr_path, req_chunking=req_chunking, 
+                                          dimension_names=self.dimension_names)
+        #subset_slice_id = []
+        # delayed_write = []
         futures = []
-        for i in range(len(self.chunk_table)): 
+        for i in tqdm(range(100)):  # len(self.chunk_table))): 
             subset, slice_ = self.subset(i)
-            #subset_slice_id.append((subset, slice, i))
-            
-                #subset_items.append((subset, items, slice, i))
-            future = client.submit(partial_load_otf_subset, (subset, slice_, i, items_gdf))
-            futures.append(future)
+            items = items_gdf.clip(subset.boundingbox)['asset_items'].to_list()
+            #subset_slice_id.append((subset, slice_, i, items))
+            futures.append(dask.delayed(partial_load_otf_subset)((subset, slice_, i, items)))
+            #subset_items.append((subset, items, slice, i))
+            #future = client.submit(partial_load_otf_subset, (subset, slice_, i, items_gdf))
+            #futures.append(future)
                 
             # subset_slice_id.append((subset, slice, i))
             # delayed_write.append(delayed(partial_load_otf_subset)((subset, slice, i)))
             # delayed_write.append(delayed(partial_load_otf_subset)((subset, gdf, slice, i)))
 
- 
+
         #print('mapping dask tasks')
         # partial_load_otf_subset = partial(load_otf_subset, tmin=t_min_large_cube,
         #                                 zarr_path=self.zarr_path, req_chunking=req_chunking, dimension_names=self.dimension_names)
-        #daskbag = db.from_sequence(subset_slice_id, partition_size=10).map(partial_load_otf_subset)
+        # if subdivision > 1:
+        #     subset_slice_id = [subset_slice_id[i:i + subdivision] for i in range(0, len(subset_slice_id), subdivision)]
+        #daskbag = db.from_sequence(subset_slice_id).map(partial_load_otf_subset)
+        # do = []
+        # for s in subset_slice_id[:100]:
+        #     do.append(dask.delayed(partial_load_otf_subset)(s))
         #daskbag = db.from_delayed(delayed_write)
         print('computing dask tasks')
         #futures = client.gather(futures)
-        wait(futures)
+        #wait(futures)
         #print('computing dask tasks')
-        #results = daskbag.compute()
+        #_ = daskbag.compute()
+        res = dask.compute(*futures)
         #print('updating chunk table')
         #return results
         # for d in tqdm(results):
         #     self.chunk_table.loc[d[0], 'timerange_in_zarr'].append([np.datetime_as_string(d[1], unit='D'),
         #                                                         np.datetime_as_string(d[2], unit='D')])
-        #return futures
+        return res
 
 
     def __fill_subset_into_large_data(self, subset, items, t_min_large_cube, enlarge_by_n_chunks, dask=False):
@@ -919,7 +952,12 @@ def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices
 
 
 def download_item(item):
-    return get_asset(*item)
+    if isinstance(item, tuple):
+        get_asset(*item)
+    if isinstance(item, list):
+        for i in item:
+            get_asset(*i)
+    return None
 
 
 def get_asset(href, save_path):
@@ -934,6 +972,7 @@ def get_asset(href, save_path):
                 print(f'Error during cleanup of file {save_path}:', e)
     except Exception as e:
         print(f'Error downloading {href}:', e)
+    return None
 
 
 def get_unique_elements(lists_of_objects):
@@ -1291,8 +1330,8 @@ def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None, di
                             dimension_names['longitude']: slice(*lon_slice)})
 
 
-def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, crs, 
-                      grid_size=None, ):
+def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, crs,
+                      grid_size=None):
     """
     Request items in parallel.
     Will request items for a regular grid of points in the aoi.
@@ -1335,8 +1374,12 @@ def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, 
     request_partial = partial(request_items_parallel, start_date=start_date,
                                 end_date=end_date, collection=collection,
                                 url=url, transform_to=transform_to)
-    dask_bag = db.from_sequence(process).map(request_partial)
-    items = dask_bag.compute()
+    do = []
+    for p in process:
+        do.append(dask.delayed(request_partial)(p))
+    items = dask.compute(*do)
+    # dask_bag = db.from_sequence(process).map(request_partial)
+    # items = dask_bag.compute()
     return items
 
 
@@ -1354,11 +1397,14 @@ def _check_parallel_request(items, requested_bands, path):
     filtered_requests: list
         The items that are not locally available.
     """
-
-    unique = get_unique_elements(items)
-    _, filtered_requests = check_request_against_local(unique, out_path=path,
-                                                        requested_bands=requested_bands)
-    return filtered_requests
+    assets = []
+    for p in items:
+        for i in p:
+            for a in requested_bands:
+                save_path = os_path.join(*[path] + i.assets[a].href.split("/")[-6:])
+                if not os_path.exists(save_path):
+                    assets.append((i.assets[a].href, save_path))
+    return list(set(assets))
 
 
 def _parallel_download(items):
@@ -1370,8 +1416,12 @@ def _parallel_download(items):
     items: list
         The items to download.
     """
-    downloads = db.from_sequence(items).map(download_item)
-    downloads.compute()
+    do = []
+    for i in items:
+        do.append(dask.delayed(download_item)(i))
+    #downloads = db.from_sequence(items).map(download_item)
+    dask.compute(*do)
+    return None
 
 
 def items_to_dataframe(items, to_crs=None):
@@ -1452,33 +1502,19 @@ def _load_otf_cube_bulk(subset, filtered_items, requested_bands=None, chunking=N
 
     return otf_cube
 
-# def _write_otf_cube_bulk(cube, t_min_large_cube, req_chunking, slices, zarr_path, chunksize_xy=256, dimension_names=None):
-#     if dimension_names is None:
-#         dimension_names = {'time':'time', 'latitude':'latitude', 'longitude':'longitude'}
-#     min_time = cube['time'].min().values
-#     max_time = cube['time'].max().values
 
-#     cube = cube.reindex(time=pd.date_range(
-#         min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
-
-#     t_insert_start = (min_time - pd.to_datetime(t_min_large_cube).to_numpy()
-#                         ).astype('timedelta64[D]').astype(int)
-#     t_insert_end = (max_time - pd.to_datetime(t_min_large_cube).to_numpy()
-#                     ).astype('timedelta64[D]').astype(int) + 1
-#     for b in cube.data_vars:
-#         store_chunks_to_zarr(cube, zarr_path, b,
-#                                 (t_insert_start, t_insert_end),
-#                                 slices,
-#                                 chunksize_xy,
-#                                 0, 0, 
-#                                 dimension_names)
-#     return min_time, max_time
+# def write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names):
+#     if isinstance(subset_slices_id_items, tuple):
+#         _write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names)
+#     elif isinstance(subset_slices_id, list):
+#         for subset_slices_id in subset_slices_id_items:
+#             _write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names)
 
 
-def write_otf_subset(subset_slices_id_gdf, tmin, zarr_path, req_chunking, dimension_names):
-    subset, slices, chunk_id, gdf = subset_slices_id_gdf
+def write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names):
+    subset, slices, chunk_id, items = subset_slices_id_items
 
-    items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
+    #items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
     # local_gdf = gdf.copy()
     if len(items) == 0:
         #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append(['No items in subset'])
@@ -1494,13 +1530,20 @@ def write_otf_subset(subset_slices_id_gdf, tmin, zarr_path, req_chunking, dimens
     min_time = cube['time'].min().values
     max_time = cube['time'].max().values
 
+    # return chunk_id, min_time, max_time, 'done'
+
     cube = cube.reindex(time=pd.date_range(
         min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
+    
 
     t_insert_start = (min_time - pd.to_datetime(tmin).to_numpy()
                         ).astype('timedelta64[D]').astype(int)
     t_insert_end = (max_time - pd.to_datetime(tmin).to_numpy()
                     ).astype('timedelta64[D]').astype(int) + 1
+    
+    cube[list(cube.data_vars.keys())[0]].values
+    return chunk_id, min_time, max_time, 'done'
+
     
     try:
         cube.to_zarr(zarr_path, mode='r+', write_empty_chunks=False,
@@ -1517,31 +1560,20 @@ def write_otf_subset(subset_slices_id_gdf, tmin, zarr_path, req_chunking, dimens
     #     #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
     #     #return chunk_id, 0, 0, f'{e}'
     #     return None
-    except WarpOperationError as e:
+    except (WarpOperationError, Exception) as e:
         # return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
         #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
         #return chunk_id, 0, 0, f'{e}'
-        return None
-    except Exception as e:
-        # return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
-        # local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([f'{e}'])
-        #return chunk_id, 0, 0, f'{e}'
-        return None
-    #     print(e)
-    # for b in cube.data_vars:
-    #     store_chunks_to_zarr(cube, zarr_path, b,
-    #                             (t_insert_start, t_insert_end),
-    #                             slices,
-    #                             req_chunking[dimension_names['latitude']],
-    #                             0, 0, 
-    #                             dimension_names)
+        return chunk_id, 0,0, e
+        # print(e)
         
     #return chunk_id, min_time, max_time
     #local_gdf.loc[chunk_id, 'timerange_in_zarr'].append([np.datetime_as_string(min_time, unit='D'),
     #                                                     np.datetime_as_string(max_time, unit='D')])
     # return (chunk_id, np.datetime_as_string(min_time, unit='D'), 
     #         np.datetime_as_string(max_time, unit='D'), 'sucess')
-    return None
+    # TODO: write back status and saved time to chunk_table
+    return chunk_id, min_time, max_time, 'sucess'
 
 
 def get_size_of_list_elements(lst):
