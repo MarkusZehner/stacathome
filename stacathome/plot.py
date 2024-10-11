@@ -45,35 +45,6 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
                 },
                 ).add_to(m)
 
-    if chunktable is not None:
-        linear = cm.LinearColormap(
-            ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89',
-             '#26828e', '#31688e', '#3e4989', '#482878', '#440154'],
-            vmin=0, vmax=21889)    
-            
-        GeoJson(chunktable,
-                name='MCChunks',
-                show=True,
-                control=True,
-                marker=CircleMarker(
-                    radius=4,
-                    fill_color="orange",
-                    fill_opacity=0.4,
-                    color="black",
-                    weight=1),
-                style_function=lambda feature: {
-                    # fill for polygons
-                    'fillColor': linear(feature['properties']['chunk_id']),
-                    'color': '#000000',         # border for polygons
-                    'weight': 1,             # Line thickness
-                    'fillOpacity': 0.6,      # Opacity of the fill
-                },
-                tooltip=GeoJsonTooltip(
-                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
-                popup=GeoJsonPopup(
-                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
-                ).add_to(m)
-
     tile_list = FeatureGroup(name='Tiles', control=True)
     for t in np.unique(gdf_tiles['s2:mgrs_tile']):
         popup = Popup()
@@ -105,13 +76,13 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
         ).properties(
             width=600, height=100,
         )
-        # vega_lite = VegaLite(
-        #     time_line, # tab + time_line,
-        #     #tab.to_json(format='vega') + time_line.to_json(format='vega'),
-        #     width="100%",
-        #     height="100%",
-        # )
-        # vega_lite.add_to(popup)
+        vega_lite = VegaLite(
+            tab + time_line,
+            #tab.to_json(format='vega') + time_line.to_json(format='vega'),
+            width="100%",
+            height="100%",
+        )
+        vega_lite.add_to(popup)
 
         GeoJson(gdf_area,
                 name=f'Tile {t}',
@@ -133,6 +104,36 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
                 popup=popup,  # ENH: make the popup a funciton of the tile
                 ).add_to(tile_list)
     tile_list.add_to(m)
+
+    if chunktable is not None:
+        linear = cm.LinearColormap(
+            ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89',
+             '#26828e', '#31688e', '#3e4989', '#482878', '#440154'],
+            vmin=0, vmax=21889)    
+            
+        GeoJson(chunktable,
+                name='MCChunks',
+                show=True,
+                control=True,
+                marker=CircleMarker(
+                    radius=4,
+                    fill_color="orange",
+                    fill_opacity=0.4,
+                    color="black",
+                    weight=1),
+                style_function=lambda feature: {
+                    # fill for polygons
+                    'fillColor': linear(feature['properties']['chunk_id']),
+                    'color': '#000000',         # border for polygons
+                    'weight': 1,             # Line thickness
+                    'fillOpacity': 0.6,      # Opacity of the fill
+                },
+                tooltip=GeoJsonTooltip(
+                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                popup=GeoJsonPopup(
+                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                ).add_to(m)
+    
     m.fit_bounds(m.get_bounds())
     LayerControl(collapsed=False).add_to(m)
     return m
