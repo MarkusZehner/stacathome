@@ -134,9 +134,9 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
                     'fillOpacity': 0.6,      # Opacity of the fill
                 },
                 tooltip=GeoJsonTooltip(
-                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                    fields=["chunk_id", "lat_coord", "lon_coord"]),
                 popup=GeoJsonPopup(
-                    fields=["chunk_id", "lat_chunk", "lon_chunk"]),
+                    fields=["chunk_id", "lat_coord", "lon_coord"]),
                 ).add_to(m)
     
     m.fit_bounds(m.get_bounds())
