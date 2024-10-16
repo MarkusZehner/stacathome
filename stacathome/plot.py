@@ -11,12 +11,13 @@ from shapely.geometry import shape as s_shape, Point, box as s_box, Polygon
 from folium import (Map, Popup, LatLngPopup, VegaLite, GeoJson,
                     GeoJsonTooltip, CircleMarker, LayerControl, FeatureGroup,
                     GeoJsonPopup)
-from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value # , data_transformers
+from altair import Chart, Axis, X as alt_X, Y as alt_Y, value as alt_value, data_transformers
 import branca.colormap as cm
 
 
+
 def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
-    # data_transformers.enable("vegafusion")
+    data_transformers.disable_max_rows()
     # group by tiles and times
     gdf_tiles = gdf.groupby(['s2:mgrs_tile']).agg({
         # Merge geometries using unary_union
@@ -24,7 +25,7 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
     }).reset_index()
 
     gdf_tiles.set_geometry('geometry', inplace=True, crs=f'epsg:4326')
-    gdf_ex = gdf.explode('assets')
+    gdf_ex = gdf[['s2:mgrs_tile', 'assets', 'datetime']].explode('assets')
     gdf_ex['assets'] = gdf_ex.assets.astype('category')
 
     m = Map(control_scale=True)
@@ -49,8 +50,12 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
     for t in np.unique(gdf_tiles['s2:mgrs_tile']):
         popup = Popup()
         gdf_ex_sub = gdf_ex.loc[gdf_ex['s2:mgrs_tile'] == t]
+        # print(t, len(gdf_ex_sub))
         gdf_area = gdf_tiles.loc[gdf_tiles['s2:mgrs_tile'] == t]
         # make the chart
+
+        # if t == '38PRQ':
+        #     return gdf_ex_sub
         tab = Chart(gdf_ex_sub[['datetime', 'assets']]).mark_point(filled=True).encode(
             x=alt_X('datetime:T', title='Time', axis=Axis(format="%Y %B")),
             y=alt_Y('assets', type='nominal', title='Assets'),

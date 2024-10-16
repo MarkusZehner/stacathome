@@ -1,4 +1,4 @@
-from os import listdir, path as os_path, makedirs, remove as os_remove
+from os import listdir, rmdir, path as os_path, makedirs, remove as os_remove
 import sys
 import pickle
 from copy import copy, deepcopy
@@ -45,12 +45,12 @@ configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
 
 def load_maxicube(path):
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         mxc = pickle.load(f)
         if not isinstance(mxc, MaxiCube):
-            raise ValueError('File is not a MaxiCube')
+            raise ValueError("File is not a MaxiCube")
         if mxc._version != __version__:
-            raise ValueError('Version mismatch')
+            raise ValueError("Version mismatch")
         return mxc
 
 
@@ -91,17 +91,19 @@ class MaxiCube:
         The path to the zarr store.
     """
 
-    def __init__(self,
-                 aoi: str,
-                 path: str,
-                 crs: int = 4326,
-                 resolution: float = 0.00018,
-                 chunksize_xy: int = 256,
-                 chunksize_t: int = -1,
-                 url: str = None,
-                 collection: str = 'sentinel-2-l2a',
-                 requested_bands: list[str] = None,
-                 zarr_path: str = None):
+    def __init__(
+        self,
+        aoi: str,
+        path: str,
+        crs: int = 4326,
+        resolution: float = 0.00018,
+        chunksize_xy: int = 256,
+        chunksize_t: int = -1,
+        url: str = None,
+        collection: str = "sentinel-2-l2a",
+        requested_bands: list[str] = None,
+        zarr_path: str = None,
+    ):
         # manage data structure
         self._version = __version__
         self.name = aoi
@@ -109,13 +111,13 @@ class MaxiCube:
         self.transform = None
         if self.crs != 4326:
             self.transform = get_transform(self.crs, 4326)
-            self.dimension_names = {'time': 'time',
-                                    'latitude': 'y',
-                                    'longitude': 'x'}
+            self.dimension_names = {"time": "time", "latitude": "y", "longitude": "x"}
         else:
-            self.dimension_names = {'time': 'time',
-                                    'latitude': 'latitude',
-                                    'longitude': 'longitude'}
+            self.dimension_names = {
+                "time": "time",
+                "latitude": "latitude",
+                "longitude": "longitude",
+            }
 
         self.aoi = self.get_aoi(aoi)
 
@@ -123,13 +125,16 @@ class MaxiCube:
         self.chunksize_xy = chunksize_xy
         self.chunksize_t = chunksize_t
         self.geobox = get_geobox_from_aoi(
-            self.aoi, self.crs, self.resolution, self.chunksize_xy)
+            self.aoi, self.crs, self.resolution, self.chunksize_xy
+        )
         self.chunk_table = chunk_table_from_geobox(
-            self.geobox, self.chunksize_xy, self.crs, self.aoi)
-        self.chunk_table['timerange_in_zarr'] = np.empty(
-            (len(self.chunk_table), 0)).tolist()
+            self.geobox, self.chunksize_xy, self.crs, self.aoi
+        )
+        self.chunk_table["timerange_in_zarr"] = np.empty(
+            (len(self.chunk_table), 0)
+        ).tolist()
         if not requested_bands:
-            self.requested_bands = ['B02', 'B03', 'B04', 'B8A']
+            self.requested_bands = ["B02", "B03", "B04", "B8A"]
         else:
             self.requested_bands = requested_bands
 
@@ -163,15 +168,16 @@ class MaxiCube:
             json = get_countries_json(aoi)
 
         json_crs = None
-        if 'properties' in json['features'][0] and 'crs' in json['features'][0]['properties']:
-            json_crs = json['features'][0]['properties']['crs']
+        if (
+            "properties" in json["features"][0]
+            and "crs" in json["features"][0]["properties"]
+        ):
+            json_crs = json["features"][0]["properties"]["crs"]
 
-        aoi = from_geojson(
-            f'{json['features'][0]['geometry']}'.replace("'", '"'))
+        aoi = from_geojson(f"{json['features'][0]['geometry']}".replace("'", '"'))
 
         if json_crs is not None and json_crs != self.crs:
-            aoi = transform(aoi, get_transform(
-                json_crs, self.crs), include_z=False)
+            aoi = transform(aoi, get_transform(json_crs, self.crs), include_z=False)
         return aoi
 
     def items_as_geodataframe(self, items: list[Item] = None):
@@ -186,9 +192,16 @@ class MaxiCube:
         """
         Plot the chunk centroids from the chunk table as a map.
         """
-        return self.chunk_table.plot(column='chunk_id', cmap='viridis', legend=True, markersize=.05)
+        return self.chunk_table.plot(
+            column="chunk_id", cmap="viridis", legend=True, markersize=0.05
+        )
 
-    def subset(self, chunk_id: int = None, lat_lon: tuple[float] = None, enlarge_by_n_chunks: int = 0):
+    def subset(
+        self,
+        chunk_id: int = None,
+        lat_lon: tuple[float] = None,
+        enlarge_by_n_chunks: int = 0,
+    ):
         """
         Subset the geobox by chunk_id or lat_lon.
         Will adhere to the chunks.
@@ -210,15 +223,24 @@ class MaxiCube:
             The indecex for slices to subset the data within larger zarr store.
         """
         if chunk_id is not None:
-            subset, yx_index_slices = subset_geobox_by_chunk_nr(self.geobox, chunk_id, self.chunksize_xy,
-                                                                self.chunk_table, enlarge_by_n_chunks)
+            subset, yx_index_slices = subset_geobox_by_chunk_nr(
+                self.geobox,
+                chunk_id,
+                self.chunksize_xy,
+                self.chunk_table,
+                enlarge_by_n_chunks,
+            )
         elif lat_lon is not None:
-            subset, yx_index_slices = subset_geobox_by_chunks_latlon(self.geobox, lat_lon[0], lat_lon[1],
-                                                                     self.chunksize_xy,
-                                                                     self.chunk_table,
-                                                                     enlarge_by_n_chunks)
+            subset, yx_index_slices = subset_geobox_by_chunks_latlon(
+                self.geobox,
+                lat_lon[0],
+                lat_lon[1],
+                self.chunksize_xy,
+                self.chunk_table,
+                enlarge_by_n_chunks,
+            )
         else:
-            raise ValueError('Must provide either chunk_id or lat_lon')
+            raise ValueError("Must provide either chunk_id or lat_lon")
         return subset, yx_index_slices
 
     # def _parse_subset(self, subset:int|tuple[float]|GeoBox, enlarge_by_n_chunks=0):
@@ -232,9 +254,16 @@ class MaxiCube:
     #         subset = subset
     #     return subset, index_slices
 
-    def request_items(self, start_date: str, end_date: str,
-                      subset: int | tuple[float] | GeoBox, enlarge_by_n_chunks=0,
-                      collection=None, url=None, new_request=False):
+    def request_items(
+        self,
+        start_date: str,
+        end_date: str,
+        subset: int | tuple[float] | GeoBox,
+        enlarge_by_n_chunks=0,
+        collection=None,
+        url=None,
+        new_request=False,
+    ):
         """
         Request items from the STAC API.
 
@@ -259,28 +288,32 @@ class MaxiCube:
             If True, will request new items, if False will use the last request.
         """
         # TODO: Subset parser?
-        if subset is None and subset == 'full':
+        if subset is None and subset == "full":
             subset = self.aoi
-            print('Using full aoi this may take a while')
+            print("Using full aoi this may take a while")
         elif isinstance(subset, int):
-            subset, _ = self.subset(chunk_id=subset,
-                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset, _ = self.subset(
+                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
             subset = s_box(*subset.boundingbox)
         elif isinstance(subset, tuple):
-            subset, _ = self.subset(lat_lon=subset,
-                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset, _ = self.subset(
+                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
             subset = s_box(*subset.boundingbox)
 
         if not collection:
             collection = self.collection
         else:
             raise UserWarning(
-                'Using collection defined in function call - may differ from init')
+                "Using collection defined in function call - may differ from init"
+            )
         if not url:
             url = self.url
         else:
             raise UserWarning(
-                'Using url defined in function call - may differ from init')
+                "Using url defined in function call - may differ from init"
+            )
 
         if self.transform is not None:
             subset = transform(subset, self.transform, include_z=False)
@@ -305,11 +338,15 @@ class MaxiCube:
 
     def compare_local(self, report=False):
         if not self.req_items:
-            raise ValueError('Request items first')
-        self.req_items_local, self.pending = check_request_against_local(self.req_items, self.path,
-                                                                         requested_bands=self.requested_bands, report=report)
+            raise ValueError("Request items first")
+        self.req_items_local, self.pending = check_request_against_local(
+            self.req_items,
+            self.path,
+            requested_bands=self.requested_bands,
+            report=report,
+        )
 
-    def local_assets(self, name='stacathome_local_items.pkl', rerequest=False):
+    def local_assets(self, name="stacathome_local_items.pkl", rerequest=False):
         """
         Load local assets from the pickle file, or request them if not available.
 
@@ -324,11 +361,13 @@ class MaxiCube:
             The local items.
         """
         if not rerequest and os_path.exists(os_path.join(self.path, name)):
-            print('Loading local assets')
-            return pickle.load(open(os_path.join(self.path, name), 'rb'))
+            print("Loading local assets")
+            return pickle.load(open(os_path.join(self.path, name), "rb"))
         else:
-            print('Requesting local assets')
-            return get_all_local_assets(self.path, self.collection, self.requested_bands)
+            print("Requesting local assets")
+            return get_all_local_assets(
+                self.path, self.collection, self.requested_bands
+            )
 
     def plot(self, items=None, plot_chunks=True, subset_chunks_by=50):
         """
@@ -360,7 +399,7 @@ class MaxiCube:
         return leaflet_overview(gdf, chunks, aoi=self.aoi, transform_to=self.transform)
 
     def download_requested(self, items=None, use_dask=True, daskkwargs={}):
-        print('deprecated, should be done with download_all')
+        print("deprecated, should be done with download_all")
         # """
         # Download the items.
         # Will use self.req_items if no items are provided.
@@ -443,7 +482,7 @@ class MaxiCube:
 
         if not items:
             if not self.req_items_local:
-                print('Request and download items first!')
+                print("Request and download items first!")
                 return
             items = self.req_items_local
 
@@ -457,9 +496,11 @@ class MaxiCube:
                 idx = old_ids.index(id_)
                 for band in items[i].assets:
                     if band not in self.items_local_global[idx].assets:
-                        self.items_local_global[idx].assets[band] = items[i].assets[band]
+                        self.items_local_global[idx].assets[band] = items[i].assets[
+                            band
+                        ]
 
-    def save_items(self, items=None, name='stacathome_local_items.pkl'):
+    def save_items(self, items=None, name="stacathome_local_items.pkl"):
         """
         Save the items to a pickle file.
         defaults to self.req_items, compares local assets first, then saves all local items.
@@ -472,12 +513,16 @@ class MaxiCube:
         """
 
         self._update_items_local_global(items)
-        with open(os_path.join(self.path, name), 'wb') as f:
+        with open(os_path.join(self.path, name), "wb") as f:
             pickle.dump(self.items_local_global, f)
 
     def status(self):
-        print((f'Items requested: {len(self.req_items) if self.req_items else 0}, Items requestedlocal : {len(
-            self.req_items_local) if self.req_items_local else 0}, Items local: {len(self.items_local_global) if self.items_local_global else 0}'))
+        print(
+            (
+                f"Items requested: {len(self.req_items) if self.req_items else 0}, Items requestedlocal : {len(
+            self.req_items_local) if self.req_items_local else 0}, Items local: {len(self.items_local_global) if self.items_local_global else 0}"
+            )
+        )
 
     def _update_items_local_global(self, items=None):
         if items is None and self.req_items is None:
@@ -493,56 +538,86 @@ class MaxiCube:
         self.req_items_local = None
         self.pending = None
         self.items_local_global = [
-            i for i in self.items_local_global if len(i.assets.keys()) > 0]
-        print(f'Updated local items, {len(self.items_local_global)} items')
+            i for i in self.items_local_global if len(i.assets.keys()) > 0
+        ]
+        print(f"Updated local items, {len(self.items_local_global)} items")
 
-    def save(self, name='saved.maxicube'):
+    def save(self, name="saved.maxicube"):
         """
         Save the MaxiCube Object to a pickle file.
         """
         self._update_items_local_global()
-        with open(os_path.join(self.path, f'{name}'), 'wb') as f:
+        with open(os_path.join(self.path, f"{name}"), "wb") as f:
             pickle.dump(self, f)
 
-    def download_all(self, start_date, end_date, client=None,
-                     subset=None, enlarge_by_n_chunks=0,
-                     grid_size=None, subdivision=1):
+    def download_all(
+        self,
+        start_date,
+        end_date,
+        client=None,
+        subset=None,
+        enlarge_by_n_chunks=0,
+        grid_size=None,
+        subdivision=1,
+    ):
         """
         Intended wrapper to request, download and store items in one go.
-        Will request items in parallel, check them against local assets, download them in parallel and store them.
+        Will request items in parallel, check them against local assets, 
+        download them in parallel and store them.
         Uses the given AOI and chunk table to request items for a regular grid of points.
         """
         # TODO: Subset parser?
         if subset is None:
             subset = self.aoi
-            print('Using full aoi this may take a while')
+            print("Using full aoi this may take a while")
         elif isinstance(subset, int):
-            subset, _ = self.subset(chunk_id=subset,
-                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            subset, _ = self.subset(
+                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
             subset = s_box(*subset.boundingbox)
         elif isinstance(subset, tuple):
-            subset, _ = self.subset(lat_lon=subset,
-                                    enlarge_by_n_chunks=enlarge_by_n_chunks)
+            print("subset by lat lon")
+            subset, _ = self.subset(
+                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
             subset = s_box(*subset.boundingbox)
         elif isinstance(subset, GeoBox):
             subset = s_box(*subset.boundingbox)
         elif isinstance(subset, Polygon):
             subset = subset
-        process = _parallel_request(start_date, end_date, self.collection, self.url,
-                                    self.transform, subset, self.crs, grid_size)
-        checked = _check_parallel_request(
-            process, self.requested_bands, self.path)
+        process = _parallel_request(
+            start_date,
+            end_date,
+            self.collection,
+            self.url,
+            self.transform,
+            subset,
+            self.crs,
+            grid_size,
+        )
+        
+        checked = _check_parallel_request(process, self.requested_bands, self.path)
         if len(checked) == 0:
-            print('No new items to download')
+            print("No new items to download")
             return process
         if subdivision > 1:
-            checked = [checked[i:i + subdivision]
-                       for i in range(0, len(checked), subdivision)]
+            checked = [
+                checked[i : i + subdivision]
+                for i in range(0, len(checked), subdivision)
+            ]
         _parallel_download(checked, client)
-        self._update_items_local_global(process)
+        # self._update_items_local_global(process) # does not make sense here with fire_and_forget download
         return process
 
-    def load_otf_cube(self, subset, items=None, requested_bands=None, chunking=None, enlarge_by_n_chunks=0, drop_fill=False):
+    def load_otf_cube(
+        self,
+        subset,
+        items=None,
+        requested_bands=None,
+        chunking=None,
+        enlarge_by_n_chunks=0,
+        drop_fill=False,
+    ):
         # TODO remake with bulk functions
         """
         Load items on the fly into a cube.
@@ -570,46 +645,59 @@ class MaxiCube:
         if requested_bands is None:
             requested_bands = self.requested_bands
         if chunking is None:
-            chunking = {self.dimension_names['time']: self.chunksize_t,
-                        self.dimension_names['latitude']: self.chunksize_xy,
-                        self.dimension_names['longitude']: self.chunksize_xy}
+            chunking = {
+                self.dimension_names["time"]: self.chunksize_t,
+                self.dimension_names["latitude"]: self.chunksize_xy,
+                self.dimension_names["longitude"]: self.chunksize_xy,
+            }
 
         # TODO: Subset parser?
         if isinstance(subset, int):
             subset, _ = self.subset(
-                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
         elif isinstance(subset, tuple):
             subset, _ = self.subset(
-                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
         elif isinstance(subset, GeoBox):
             subset = subset
 
         if items is None:
             items = self.items_local_global
         gdf = items_to_dataframe(items, self.crs)
-        items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
+        items = gdf.clip(subset.boundingbox)["asset_items"].to_list()
 
         if len(items) == 0:
-            raise ValueError('No items in subset')
+            raise ValueError("No items in subset")
 
         otf_cube = odc_load(
             items,
             bands=requested_bands,
             chunks=chunking,
             geobox=subset,
-            dtype='uint16',
-            resampling='bilinear',
-            groupby='solar_day',
+            dtype="uint16",
+            resampling="bilinear",
+            groupby="solar_day",
         )
         if drop_fill:
             mean_over_time = otf_cube[requested_bands[0]].mean(
-                dim=[self.dimension_names['latitude'], self.dimension_names['longitude']])
-            otf_cube = otf_cube.isel(
-                time=np.where(mean_over_time != 0)[0])
+                dim=[
+                    self.dimension_names["latitude"],
+                    self.dimension_names["longitude"],
+                ]
+            )
+            otf_cube = otf_cube.isel(time=np.where(mean_over_time != 0)[0])
         return otf_cube
 
-    def construct_large_cube(self, zarr_path=None, start_date='2015-06-01', end_date='2026-01-01',
-                             chunking=None, overwrite=False):
+    def construct_large_cube(
+        self,
+        zarr_path=None,
+        start_date="2015-06-01",
+        end_date="2026-01-01",
+        chunking=None,
+        overwrite=False,
+    ):
         """
         This cube is created empty, start and end date should contain entire planned time series.
 
@@ -629,31 +717,46 @@ class MaxiCube:
         if zarr_path is None:
             if self.zarr_path is None:
                 raise ValueError(
-                    'No zarr path provided, set self.zarr_path or provide it to the function')
+                    "No zarr path provided, set self.zarr_path or provide it to the function"
+                )
             zarr_path = self.zarr_path
         else:
             self.zarr_path = zarr_path
 
         if chunking is None:
-            chunking = {self.dimension_names['time']: self.chunksize_t,
-                        self.dimension_names['latitude']: self.chunksize_xy,
-                        self.dimension_names['longitude']: self.chunksize_xy}
+            chunking = {
+                self.dimension_names["time"]: self.chunksize_t,
+                self.dimension_names["latitude"]: self.chunksize_xy,
+                self.dimension_names["longitude"]: self.chunksize_xy,
+            }
         try:
-            create_skeleton_zarr(self.geobox, zarr_path,
-                                 chunking=(chunking[self.dimension_names['time']],
-                                           chunking[self.dimension_names['latitude']],
-                                           chunking[self.dimension_names['longitude']]),
-                                 dtype=np.uint16, bands=self.requested_bands,
-                                 start_date=start_date, end_date=end_date,
-                                 t_freq='1D', overwrite=overwrite)
+            create_skeleton_zarr(
+                self.geobox,
+                zarr_path,
+                chunking=(
+                    chunking[self.dimension_names["time"]],
+                    chunking[self.dimension_names["latitude"]],
+                    chunking[self.dimension_names["longitude"]],
+                ),
+                dtype=np.uint16,
+                bands=self.requested_bands,
+                start_date=start_date,
+                end_date=end_date,
+                t_freq="1D",
+                overwrite=overwrite,
+            )
         except ContainsGroupError as e:
-            print(f'Zarr already exists at {
-                  zarr_path}. Skipping creation. Set overwrite=True to overwrite.')
+            print(
+                f"Zarr already exists at {
+                  zarr_path}. Skipping creation. Set overwrite=True to overwrite."
+            )
 
     def check_assets_for_read_errors(self, subdivision=20):
         self._update_items_local_global()
-        sliced_items = [self.items_local_global[i:i + subdivision]
-                        for i in range(0, len(self.items_local_global), subdivision)]
+        sliced_items = [
+            self.items_local_global[i : i + subdivision]
+            for i in range(0, len(self.items_local_global), subdivision)
+        ]
         res_2 = []
         for i in tqdm(sliced_items):
             res_2.append(dask.delayed(check_assets)(i))
@@ -669,15 +772,15 @@ class MaxiCube:
         for i in not_found:
             # this should not happen
             if os_path.exists(i):
-                print(i, os_path.getsize(i)//1000000)
+                print(i, os_path.getsize(i) // 1000000)
             else:
-                print('not exist:', i)
+                print("not exist:", i)
 
         ids = [i.id for i in self.items_local_global]
         empty_items = []
         for i in read_failed:
             if os_path.exists(i):
-                path_sep = i.split('/')
+                path_sep = i.split("/")
                 item_name = path_sep[-6]
                 item_name = item_name[:27] + item_name[33:-5]
                 asset = path_sep[-1][-11:-8]
@@ -690,16 +793,22 @@ class MaxiCube:
                             empty_items.append(pos)
                 except ValueError:
                     continue
-                print('removed ', item_name, asset,
-                      ' with size ', os_path.getsize(i)//1000000)
+                print(
+                    "removed ",
+                    item_name,
+                    asset,
+                    " with size ",
+                    os_path.getsize(i) // 1000000,
+                )
                 os_remove(i)
             else:
-                print('not exist:', i)
+                print("not exist:", i)
         for i in empty_items[::-1]:
             del self.items_local_global[i]
 
-    def fill_large_cube(self, subset=None, enlarge_by_n_chunks=0,
-                        items=None, client=None, dask=False):
+    def fill_large_cube(
+        self, subset=None, enlarge_by_n_chunks=0, items=None, client=None, dask=False
+    ):
         # TODO simplify/cleanup, handle all similar to _fill_all_large_data with write_otf_subset
         """
         Fill the large cube with the requested items.
@@ -711,7 +820,7 @@ class MaxiCube:
             The subset to fill.
         enlarge_by_n_chunks: int
             The number of chunks to enlarge the subset by.
-        items: list 
+        items: list
             The items to fill the cube with.
         dask: bool
             If True, will return dask tasks.
@@ -724,7 +833,8 @@ class MaxiCube:
 
         if self.zarr_path is None:
             raise ValueError(
-                'No zarr path provided, set self.zarr_path or run construct_large_cube first')
+                "No zarr path provided, set self.zarr_path or run construct_large_cube first"
+            )
         else:
             self.construct_large_cube()
             large_cube = xr_open_zarr(self.zarr_path)
@@ -734,15 +844,19 @@ class MaxiCube:
             items = self.items_local_global
 
         if isinstance(subset, int) or isinstance(subset, tuple):
-            tasks = self.__fill_subset_into_large_data(subset, items, t_min_large_cube,
-                                                       enlarge_by_n_chunks, dask)
+            tasks = self.__fill_subset_into_large_data(
+                subset, items, t_min_large_cube, enlarge_by_n_chunks, dask
+            )
         elif isinstance(subset, list):
             tasks = []
             for s in subset:
-                tasks.extend(self.__fill_subset_into_large_data(s, items, t_min_large_cube,
-                                                                enlarge_by_n_chunks, dask))
+                tasks.extend(
+                    self.__fill_subset_into_large_data(
+                        s, items, t_min_large_cube, enlarge_by_n_chunks, dask
+                    )
+                )
         elif subset is None:
-            print('Filling entire cube, this may take a while')
+            print("Filling entire cube, this may take a while")
             res = self._fill_all_large_data(client)
             return res
 
@@ -756,35 +870,41 @@ class MaxiCube:
         # gdf = dg.from_geopandas(self.items_as_geodataframe(), npartitions=20)
         # client.scatter(self.items_as_geodataframe())
         items_gdf = self.items_as_geodataframe()
-        req_chunking = {self.dimension_names['time']: -1,
-                        self.dimension_names['latitude']: self.chunksize_xy,
-                        self.dimension_names['longitude']: self.chunksize_xy}
+        req_chunking = {
+            self.dimension_names["time"]: -1,
+            self.dimension_names["latitude"]: self.chunksize_xy,
+            self.dimension_names["longitude"]: self.chunksize_xy,
+        }
 
         t_min_large_cube = xr_open_zarr(self.zarr_path).time.min().values
 
-        print('prepare subsets')
-        partial_load_otf_subset = partial(write_otf_subset,
-                                          tmin=t_min_large_cube,
-                                          zarr_path=self.zarr_path, req_chunking=req_chunking,
-                                          dimension_names=self.dimension_names)
+        print("prepare subsets")
+        partial_load_otf_subset = partial(
+            write_otf_subset,
+            tmin=t_min_large_cube,
+            zarr_path=self.zarr_path,
+            req_chunking=req_chunking,
+            dimension_names=self.dimension_names,
+        )
         res = []
         for i in tqdm(range(0, len(self.chunk_table), 100)):
             futures = []
-            for j in range(i, i+100):
+            for j in range(i, i + 100):
                 subset, slice_ = self.subset(j)
-                items = items_gdf.clip(subset.boundingbox)[
-                    'asset_items'].to_list()
-                futures.append(dask.delayed(partial_load_otf_subset)(
-                    (subset, slice_, j, items)))
+                items = items_gdf.clip(subset.boundingbox)["asset_items"].to_list()
+                futures.append(
+                    dask.delayed(partial_load_otf_subset)((subset, slice_, j, items))
+                )
             res_loop = dask.compute(*futures)
 
             for j in res_loop:
-                self.chunk_table.loc[j[0], 'timerange_in_zarr'].append([
-                                                                       j[1], j[2]])
+                self.chunk_table.loc[j[0], "timerange_in_zarr"].append([j[1], j[2]])
             res.extend(res_loop)
         return res
 
-    def __fill_subset_into_large_data(self, subset, items, t_min_large_cube, enlarge_by_n_chunks, dask=False):
+    def __fill_subset_into_large_data(
+        self, subset, items, t_min_large_cube, enlarge_by_n_chunks, dask=False
+    ):
         """
         Fill the large cube with the requested items.
 
@@ -813,65 +933,88 @@ class MaxiCube:
             subset = self.aoi
         elif isinstance(subset, int):
             subset, yx_index_slices = self.subset(
-                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+                chunk_id=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
         elif isinstance(subset, tuple):
             subset, yx_index_slices = self.subset(
-                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks)
+                lat_lon=subset, enlarge_by_n_chunks=enlarge_by_n_chunks
+            )
 
-        req_chunking = {self.dimension_names['time']: -1,
-                        self.dimension_names['latitude']: self.chunksize_xy,
-                        self.dimension_names['longitude']: self.chunksize_xy}
+        req_chunking = {
+            self.dimension_names["time"]: -1,
+            self.dimension_names["latitude"]: self.chunksize_xy,
+            self.dimension_names["longitude"]: self.chunksize_xy,
+        }
 
         try:
-            otf_cube = self.load_otf_cube(subset, items,
-                                          chunking=req_chunking)
+            otf_cube = self.load_otf_cube(subset, items, chunking=req_chunking)
         except ValueError as e:
             print(e)
             return
 
-        otf_cube = otf_cube.drop_vars(['spatial_ref'])
-        otf_cube['time'] = otf_cube.time.dt.floor('D')
+        otf_cube = otf_cube.drop_vars(["spatial_ref"])
+        otf_cube["time"] = otf_cube.time.dt.floor("D")
 
-        min_time = otf_cube['time'].min().values
-        max_time = otf_cube['time'].max().values
+        min_time = otf_cube["time"].min().values
+        max_time = otf_cube["time"].max().values
 
         # add time range saved of chunk in chunk table
-        self.chunk_table.loc[
-            self.chunk_table.clip(
-                subset.boundingbox).index
-        ]['timerange_in_zarr'] = self.chunk_table.loc[
-            self.chunk_table.clip(
-                subset.boundingbox).index
-        ]['timerange_in_zarr'].apply(
-            lambda x: x.append([min_time, max_time
-                                ]))
+        self.chunk_table.loc[self.chunk_table.clip(subset.boundingbox).index][
+            "timerange_in_zarr"
+        ] = self.chunk_table.loc[self.chunk_table.clip(subset.boundingbox).index][
+            "timerange_in_zarr"
+        ].apply(
+            lambda x: x.append([min_time, max_time])
+        )
 
-        t_insert_start = (min_time - pd.to_datetime(t_min_large_cube).to_numpy()
-                          ).astype('timedelta64[D]').astype(int)
-        t_insert_end = (max_time - pd.to_datetime(t_min_large_cube).to_numpy()
-                        ).astype('timedelta64[D]').astype(int) + 1
+        t_insert_start = (
+            (min_time - pd.to_datetime(t_min_large_cube).to_numpy())
+            .astype("timedelta64[D]")
+            .astype(int)
+        )
+        t_insert_end = (max_time - pd.to_datetime(t_min_large_cube).to_numpy()).astype(
+            "timedelta64[D]"
+        ).astype(int) + 1
 
-        otf_cube = otf_cube.reindex(time=pd.date_range(
-            min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
+        otf_cube = otf_cube.reindex(
+            time=pd.date_range(min_time, max_time, freq="1D"), fill_value=0, method=None
+        ).chunk(req_chunking)
 
         for b in self.requested_bands:
-            for x in range(0, len(otf_cube[self.dimension_names['longitude']]), self.chunksize_xy):
-                for y in range(0, len(otf_cube[self.dimension_names['latitude']]), self.chunksize_xy):
+            for x in range(
+                0, len(otf_cube[self.dimension_names["longitude"]]), self.chunksize_xy
+            ):
+                for y in range(
+                    0,
+                    len(otf_cube[self.dimension_names["latitude"]]),
+                    self.chunksize_xy,
+                ):
                     if dask:
                         tasks.append(
-                            delayed_store_chunks_to_zarr(otf_cube, self.zarr_path, b,
-                                                         (t_insert_start,
-                                                          t_insert_end),
-                                                         yx_index_slices,
-                                                         self.chunksize_xy,
-                                                         x, y, self.dimension_names)
+                            delayed_store_chunks_to_zarr(
+                                otf_cube,
+                                self.zarr_path,
+                                b,
+                                (t_insert_start, t_insert_end),
+                                yx_index_slices,
+                                self.chunksize_xy,
+                                x,
+                                y,
+                                self.dimension_names,
+                            )
                         )
                     else:
-                        store_chunks_to_zarr(otf_cube, self.zarr_path, b,
-                                             (t_insert_start, t_insert_end),
-                                             yx_index_slices,
-                                             self.chunksize_xy,
-                                             x, y, self.dimension_names)
+                        store_chunks_to_zarr(
+                            otf_cube,
+                            self.zarr_path,
+                            b,
+                            (t_insert_start, t_insert_end),
+                            yx_index_slices,
+                            self.chunksize_xy,
+                            x,
+                            y,
+                            self.dimension_names,
+                        )
         if dask:
             return tasks
 
@@ -896,36 +1039,112 @@ class MaxiCube:
         if self.zarr_path:
             # TODO: Subset parser?
             if isinstance(chunk_id, int):
-                _, yx_index_slices = self.subset(
-                    chunk_id=chunk_id)
+                _, yx_index_slices = self.subset(chunk_id=chunk_id)
             elif isinstance(chunk_id, tuple):
-                _, yx_index_slices = self.subset(
-                    lat_lon=chunk_id)
+                _, yx_index_slices = self.subset(lat_lon=chunk_id)
 
             if time_slice is not None:
                 if isinstance(time_slice[0], str):
                     large_cube = xr_open_zarr(self.zarr_path)
                     t_min_large_cube = large_cube.time.min().values
-                    t_slice_start = (pd.to_datetime(time_slice[0]).to_numpy(
-                    ) - pd.to_datetime(t_min_large_cube).to_numpy()).astype('timedelta64[D]').astype(int)
-                    t_slice_end = (pd.to_datetime(time_slice[1]).to_numpy(
-                    ) - pd.to_datetime(t_min_large_cube).to_numpy()).astype('timedelta64[D]').astype(int)
-                time_slice = (t_slice_start, t_slice_end+1)
-            chunk_data = get_slice_from_large_data(xr_open_zarr(
-                self.zarr_path, mask_and_scale=False), lat_slice=yx_index_slices[:2],
-                lon_slice=yx_index_slices[2:], time_slice=time_slice, dimension_names=self.dimension_names)
+                    t_slice_start = (
+                        (
+                            pd.to_datetime(time_slice[0]).to_numpy()
+                            - pd.to_datetime(t_min_large_cube).to_numpy()
+                        )
+                        .astype("timedelta64[D]")
+                        .astype(int)
+                    )
+                    t_slice_end = (
+                        (
+                            pd.to_datetime(time_slice[1]).to_numpy()
+                            - pd.to_datetime(t_min_large_cube).to_numpy()
+                        )
+                        .astype("timedelta64[D]")
+                        .astype(int)
+                    )
+                time_slice = (t_slice_start, t_slice_end + 1)
+            chunk_data = get_slice_from_large_data(
+                xr_open_zarr(self.zarr_path, mask_and_scale=False),
+                lat_slice=yx_index_slices[:2],
+                lon_slice=yx_index_slices[2:],
+                time_slice=time_slice,
+                dimension_names=self.dimension_names,
+            )
             if drop_fill:
                 mean_over_time = chunk_data[self.requested_bands[0]].mean(
-                    dim=[self.dimension_names['latitude'], self.dimension_names['longitude']])
-                chunk_data = chunk_data.isel(
-                    time=np.where(mean_over_time != 0)[0])
+                    dim=[
+                        self.dimension_names["latitude"],
+                        self.dimension_names["longitude"],
+                    ]
+                )
+                chunk_data = chunk_data.isel(time=np.where(mean_over_time != 0)[0])
             return chunk_data
+
+    def remove_tile(self, tile, delete_assets=False):
+        """
+        Delete all data from one tile in the dataset.
+
+        """
+        to_remove = []
+        hrefs = []
+        for i, a in enumerate(self.items_local_global):
+            if a.properties["s2:mgrs_tile"] == tile:
+                to_remove.append(i)
+                if delete_assets:
+                    for assets in a.assets:
+                        try:
+                            os_remove(a.assets[assets].href)
+                            hrefs.append(os_path.dirname(a.assets[assets].href))
+                        except Exception as e:
+                            print(e)
+
+        for i in to_remove[::-1]:
+            del self.items_local_global[i]
+
+        if delete_assets:
+            remove_empty_folders(set(hrefs), self.path)
+        return self.status()
+
+
+def remove_empty_folders(paths, base_folder):
+    # Normalize base folder path to avoid issues with relative paths
+    base_folder = os_path.abspath(base_folder)
+
+    def delete_if_empty(folder):
+        """Recursively delete folder and its empty parents within base folder"""
+        folder = os_path.abspath(folder)
+        
+        # Ensure folder is within base folder
+        if folder.startswith(base_folder) and os_path.isdir(folder):
+            try:
+                # If the folder is empty, delete it
+                if not listdir(folder):
+                    rmdir(folder)
+                    print(f"Deleted empty folder: {folder}")
+                    
+                    # Check parent folder if it's not the base folder
+                    parent_folder = os_path.dirname(folder)
+                    if parent_folder != base_folder:
+                        delete_if_empty(parent_folder)  # Recursively check the parent
+                else:
+                    print(f"Skipped (not empty): {folder}")
+            except Exception as e:
+                print(f"Failed to delete {folder}: {e}")
+        else:
+            print(f"Skipped (outside base folder or not a directory): {folder}")
+
+    # Process each folder in the provided paths
+    for folder in paths:
+        delete_if_empty(folder)
 
 
 def get_transform(from_crs, to_crs, always_xy=True):
     project = Transformer.from_proj(
-        Proj(f'epsg:{from_crs}'),  # source coordinate system
-        Proj(f'epsg:{to_crs}'), always_xy=always_xy)
+        Proj(f"epsg:{from_crs}"),  # source coordinate system
+        Proj(f"epsg:{to_crs}"),
+        always_xy=always_xy,
+    )
     return partial(__transform_coords, project=project)
 
 
@@ -936,14 +1155,44 @@ def __transform_coords(x_y, project):
 
 
 @delayed
-def delayed_store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names):
+def delayed_store_chunks_to_zarr(
+    dataset,
+    zarr_store,
+    b,
+    t_index_slices,
+    yx_index_slices,
+    chunksize_xy,
+    x,
+    y,
+    dimension_names,
+):
     """
     delayed wrapper for store_chunks_to_zarr
     """
-    return store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names=dimension_names)
+    return store_chunks_to_zarr(
+        dataset,
+        zarr_store,
+        b,
+        t_index_slices,
+        yx_index_slices,
+        chunksize_xy,
+        x,
+        y,
+        dimension_names=dimension_names,
+    )
 
 
-def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices, chunksize_xy, x, y, dimension_names=None):
+def store_chunks_to_zarr(
+    dataset,
+    zarr_store,
+    b,
+    t_index_slices,
+    yx_index_slices,
+    chunksize_xy,
+    x,
+    y,
+    dimension_names=None,
+):
     """
     Store chunks to a zarr store.
     Uses region to store only the chunk.
@@ -972,16 +1221,30 @@ def store_chunks_to_zarr(dataset, zarr_store, b, t_index_slices, yx_index_slices
         The dimension names. default is {'time':'time', 'latitude':'latitude', 'longitude':'longitude'}.
         for UTM crs use {'time':'time', 'latitude':'y', 'longitude':'x'}.
     """
-    (dataset[b].isel({dimension_names['longitude']: slice(x, x+chunksize_xy),
-                      dimension_names['latitude']: slice(y, y+chunksize_xy)})
-     .to_dataset(name=b)
-     .to_zarr(zarr_store, mode='r+', write_empty_chunks=False,
-              region={
-                  dimension_names['time']: slice(*t_index_slices),
-                  dimension_names['latitude']: slice(yx_index_slices[0]+y, yx_index_slices[0]+y+chunksize_xy),
-                  dimension_names['longitude']: slice(yx_index_slices[2]+x, yx_index_slices[2]+x+chunksize_xy)}
-              )
-     )
+    (
+        dataset[b]
+        .isel(
+            {
+                dimension_names["longitude"]: slice(x, x + chunksize_xy),
+                dimension_names["latitude"]: slice(y, y + chunksize_xy),
+            }
+        )
+        .to_dataset(name=b)
+        .to_zarr(
+            zarr_store,
+            mode="r+",
+            write_empty_chunks=False,
+            region={
+                dimension_names["time"]: slice(*t_index_slices),
+                dimension_names["latitude"]: slice(
+                    yx_index_slices[0] + y, yx_index_slices[0] + y + chunksize_xy
+                ),
+                dimension_names["longitude"]: slice(
+                    yx_index_slices[2] + x, yx_index_slices[2] + x + chunksize_xy
+                ),
+            },
+        )
+    )
 
 
 def download_item(item):
@@ -1002,9 +1265,9 @@ def get_asset(href, save_path):
             try:
                 os_remove(save_path)
             except Exception as e:
-                print(f'Error during cleanup of file {save_path}:', e)
+                print(f"Error during cleanup of file {save_path}:", e)
     except Exception as e:
-        print(f'Error downloading {href}:', e)
+        print(f"Error downloading {href}:", e)
     return None
 
 
@@ -1019,15 +1282,18 @@ def get_unique_elements(lists_of_objects):
     return out
 
 
-def request_items_parallel(lon_lat, start_date, end_date, url, collection, transform_to=None):
+def request_items_parallel(
+    lon_lat, start_date, end_date, url, collection, transform_to=None
+):
     p = Point(lon_lat[0], lon_lat[1])
     if transform_to is not None:
         p = transform(p, transform_to, include_z=False)
     catalog = pystacClient.open(url)
-    return catalog.search(intersects=p,
-                          datetime=f"{start_date}/{end_date}",
-                          collections=[collection],
-                          ).item_collection()
+    return catalog.search(
+        intersects=p,
+        datetime=f"{start_date}/{end_date}",
+        collections=[collection],
+    ).item_collection()
 
 
 def get_countries_json(name):
@@ -1035,7 +1301,7 @@ def get_countries_json(name):
         url = f"https://raw.githubusercontent.com/georgique/world-geojson/main/countries/{
             name}.json"
         json = requests_get(url).json()
-        json['features'][0]['properties']['crs'] = 4326
+        json["features"][0]["properties"]["crs"] = 4326
         return json
 
 
@@ -1082,7 +1348,7 @@ def check_if_country_in_repo(name):
         return True
     else:
         owner = "georgique"  # GitHub username or organization
-        repo = "world-geojson"    # Repository name
+        repo = "world-geojson"  # Repository name
         # Path within the repository (use an empty string if listing the root)
         path = "countries"
         # Branch name (e.g., 'main', 'master', or other branches)
@@ -1098,25 +1364,37 @@ def check_if_country_in_repo(name):
         if response.status_code == 200:
             contents = response.json()
             # List all filenames
-            filenames = [item['name'].split(
-                '.')[0] for item in contents if item['type'] == 'file']
+            filenames = [
+                item["name"].split(".")[0]
+                for item in contents
+                if item["type"] == "file"
+            ]
             if name.lower() in filenames:
                 return True
         else:
             print(f"Failed to retrieve data: {response.status_code}")
 
     possible_matches = [
-        country for country in country_list if country.startswith(name[0])]
-    print(f"Country {name} not found in the repository, maybe you meant one of these: {
-          possible_matches}")
+        country for country in country_list if country.startswith(name[0])
+    ]
+    print(
+        f"Country {name} not found in the repository, maybe you meant one of these: {
+          possible_matches}"
+    )
     return None
 
 
-def create_skeleton_zarr(geobox, zarr_path,
-                         chunking=None,
-                         dtype=np.uint16, bands=None,
-                         start_date=None, end_date=None, t_freq='1D',
-                         overwrite=False):
+def create_skeleton_zarr(
+    geobox,
+    zarr_path,
+    chunking=None,
+    dtype=np.uint16,
+    bands=None,
+    start_date=None,
+    end_date=None,
+    t_freq="1D",
+    overwrite=False,
+):
     """
     Create a zarr store with the same structure as the datacube, but with no data.
     Time dimension is created with the given start_date, end_date and t_freq.
@@ -1145,33 +1423,60 @@ def create_skeleton_zarr(geobox, zarr_path,
 
     """
     if not bands:
-        bands = ['B02', 'B03', 'B04', 'B8A']
-    assert set(bands) <= set(['AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06',
-                              'B07', 'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP'])
+        bands = ["B02", "B03", "B04", "B8A"]
+    assert set(bands) <= set(
+        [
+            "AOT",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A",
+            "SCL",
+            "WVP",
+        ]
+    )
 
     if chunking is None:
         chunking = (1000, 256, 256)
 
-    xr_empty = xr_zeros(geobox, dtype=dtype, chunks=chunking,
-                        time=pd.date_range(start_date, end_date, freq=t_freq))
+    xr_empty = xr_zeros(
+        geobox,
+        dtype=dtype,
+        chunks=chunking,
+        time=pd.date_range(start_date, end_date, freq=t_freq),
+    )
     xr_empty = xr_empty.to_dataset(name=bands[0])
     for band in bands:
         xr_empty[band] = xr_empty[bands[0]].astype(dtype)
-        xr_empty[band].encoding['_FillValue'] = 0
-    mode = 'w' if overwrite else 'w-'
-    xr_empty.to_zarr(zarr_path, mode=mode,
-                     write_empty_chunks=False, compute=False)
+        xr_empty[band].encoding["_FillValue"] = 0
+    mode = "w" if overwrite else "w-"
+    xr_empty.to_zarr(zarr_path, mode=mode, write_empty_chunks=False, compute=False)
 
 
 def get_geobox_from_aoi(aoi, epsg, resolution, chunksize):
     # buffer to adjust to chunksize
-    bounds = aoi.buffer(resolution*chunksize/2).bounds
-    geobox = GeoBox.from_bbox(
-        bounds, crs=f"epsg:{epsg}", resolution=resolution)
+    bounds = aoi.buffer(resolution * chunksize / 2).bounds
+    geobox = GeoBox.from_bbox(bounds, crs=f"epsg:{epsg}", resolution=resolution)
 
     # slice to be a multiple of chunksize
-    geobox = geobox[slice(geobox.shape[0] % chunksize//2, -(chunksize-geobox.shape[0] % chunksize//2)),
-                    slice(geobox.shape[1] % chunksize//2, -(chunksize-geobox.shape[1] % chunksize//2))]
+    geobox = geobox[
+        slice(
+            geobox.shape[0] % chunksize // 2,
+            -(chunksize - geobox.shape[0] % chunksize // 2),
+        ),
+        slice(
+            geobox.shape[1] % chunksize // 2,
+            -(chunksize - geobox.shape[1] % chunksize // 2),
+        ),
+    ]
     return geobox
 
 
@@ -1187,30 +1492,45 @@ def make_valid_slices_within_geobox(geobox, index_slices):
     return index_slices
 
 
-def subset_geobox_by_chunk_nr(geobox, chunk_nr, chunksize_xy, chunk_table, enlarge_by_n_chunks=0):
+def subset_geobox_by_chunk_nr(
+    geobox, chunk_nr, chunksize_xy, chunk_table, enlarge_by_n_chunks=0
+):
     chunksize_buffered = chunksize_xy + chunksize_xy * enlarge_by_n_chunks * 2
     chunk = chunk_table.loc[chunk_nr]
-    ch_side = chunksize_buffered//2
-    index_slices = [chunk['lon_chunk']-ch_side, chunk['lon_chunk']+ch_side,
-                    chunk['lat_chunk']-ch_side, chunk['lat_chunk']+ch_side]
+    ch_side = chunksize_buffered // 2
+    index_slices = [
+        chunk["lon_chunk"] - ch_side,
+        chunk["lon_chunk"] + ch_side,
+        chunk["lat_chunk"] - ch_side,
+        chunk["lat_chunk"] + ch_side,
+    ]
 
     index_slices = make_valid_slices_within_geobox(geobox, index_slices)
 
     assert (index_slices[1] - index_slices[0]) % chunksize_xy == 0
     assert (index_slices[3] - index_slices[2]) % chunksize_xy == 0
 
-    return geobox[index_slices[0]: index_slices[1],
-                  index_slices[2]: index_slices[3]], index_slices
+    return (
+        geobox[index_slices[0] : index_slices[1], index_slices[2] : index_slices[3]],
+        index_slices,
+    )
 
 
 def get_index_of_chunk_by_latlon(lat, lon, chunk_table):
-    return np.sqrt((chunk_table['lat_coord'] - lat)**2 + (chunk_table['lon_coord'] - lon)**2).argmin()
+    return np.sqrt(
+        (chunk_table["lat_coord"] - lat) ** 2 + (chunk_table["lon_coord"] - lon) ** 2
+    ).argmin()
 
 
-def subset_geobox_by_chunks_latlon(geobox, lat, lon, chunksize_xy, chunk_table, enlarge_by_n_chunks=0):
+def subset_geobox_by_chunks_latlon(
+    geobox, lat, lon, chunksize_xy, chunk_table, enlarge_by_n_chunks=0
+):
     index_ = get_index_of_chunk_by_latlon(lat, lon, chunk_table)
+    print(index_)
 
-    return subset_geobox_by_chunk_nr(geobox, index_, chunksize_xy, chunk_table, enlarge_by_n_chunks)
+    return subset_geobox_by_chunk_nr(
+        geobox, index_, chunksize_xy, chunk_table, enlarge_by_n_chunks
+    )
 
 
 def check_request_against_local(items, out_path, requested_bands=None, report=False):
@@ -1218,19 +1538,43 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
     Check which of the requested assets are already downloaded and which are missing.
     list of available assets can be directly passed to odc-stac.
     """
-    measurement_assets = ['AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06',
-                          'B07', 'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP']
-    ingnore_assets = ['visual', 'preview', 'safe-manifest', 'granule-metadata',
-                      'inspire-metadata', 'product-metadata', 'datastrip-metadata',
-                      'tilejson', 'rendered_preview']
+    measurement_assets = [
+        "AOT",
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B09",
+        "B11",
+        "B12",
+        "B8A",
+        "SCL",
+        "WVP",
+    ]
+    ingnore_assets = [
+        "visual",
+        "preview",
+        "safe-manifest",
+        "granule-metadata",
+        "inspire-metadata",
+        "product-metadata",
+        "datastrip-metadata",
+        "tilejson",
+        "rendered_preview",
+    ]
 
     if not requested_bands:
         requested_bands = measurement_assets
     else:
         assert set(requested_bands) <= set(measurement_assets)
 
-        ingnore_assets = ingnore_assets + \
-            [a for a in measurement_assets if a not in requested_bands]
+        ingnore_assets = ingnore_assets + [
+            a for a in measurement_assets if a not in requested_bands
+        ]
 
     if type(items) == ItemCollection:
         local_items = items.clone()
@@ -1244,19 +1588,32 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
     for i in range(len(local_items)):
         downloaded = True
         if len(local_items[i].assets.keys()) > 0:
-            if os_path.exists(os_path.join(out_path, next(iter(local_items[i].assets.values())).href.split("?")[0].split("/")[-6])):
+            if os_path.exists(
+                os_path.join(
+                    out_path,
+                    next(iter(local_items[i].assets.values()))
+                    .href.split("?")[0]
+                    .split("/")[-6],
+                )
+            ):
                 for b in requested_bands:
                     try:
                         # check if the file is already downloaded
                         # if yes, add path to local_items
-                        save_path = os_path.join(*[out_path] +
-                                                 local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
+                        save_path = os_path.join(
+                            *[out_path]
+                            + local_items[i]
+                            .assets[b]
+                            .href.split("?")[0]
+                            .split("/")[-6:]
+                        )
                         # check_sentinel2_data_exists_with_min_size(save_path):
                         if os_path.exists(save_path):
                             local_items[i].assets[b].href = save_path
                         else:
                             to_download.append(
-                                (local_items[i].assets[b].href, save_path))
+                                (local_items[i].assets[b].href, save_path)
+                            )
                             missing_assets += 1
                             downloaded = False
                             del local_items[i].assets[b]
@@ -1265,10 +1622,11 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
                         # print(f'Asset {b} not found in item {local_items[i].id}')
             else:
                 for b in requested_bands:
-                    save_path = os_path.join(*[out_path] +
-                                             local_items[i].assets[b].href.split("?")[0].split("/")[-6:])
-                    to_download.append(
-                        (local_items[i].assets[b].href, save_path))
+                    save_path = os_path.join(
+                        *[out_path]
+                        + local_items[i].assets[b].href.split("?")[0].split("/")[-6:]
+                    )
+                    to_download.append((local_items[i].assets[b].href, save_path))
                     del local_items[i].assets[b]
                     missing_assets += 1
                 downloaded = False
@@ -1283,7 +1641,10 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
             not_downloaded_items.append(local_items[i])
 
         # if set is only ignore_assets, then we don't have the data
-        if set(local_items[i].assets.keys()) == set(ingnore_assets) or len(local_items[i].assets.keys()) == 0:
+        if (
+            set(local_items[i].assets.keys()) == set(ingnore_assets)
+            or len(local_items[i].assets.keys()) == 0
+        ):
             idx_to_pop.append(i)
 
     for i in idx_to_pop[::-1]:
@@ -1291,30 +1652,36 @@ def check_request_against_local(items, out_path, requested_bands=None, report=Fa
 
     if report:
         if len(not_downloaded_items) == 0:  # should be a logger
-            print('All data already downloaded.')
+            print("All data already downloaded.")
         else:
-            print(f'{missing_assets} missing assets of {
-                len(not_downloaded_items)} items to download.')
+            print(
+                f"{missing_assets} missing assets of {
+                len(not_downloaded_items)} items to download."
+            )
 
     return local_items, to_download
 
 
-def get_all_local_assets(out_path, collection='sentinel-2-l2a', requested_bands=None):
+def get_all_local_assets(out_path, collection="sentinel-2-l2a", requested_bands=None):
     files = listdir(out_path)
     # S--2 specific naming scheme
-    files = [f[:27] + f[33:-5] for f in files if f.endswith('.SAFE')]
+    files = [f[:27] + f[33:-5] for f in files if f.endswith(".SAFE")]
 
     stac = "https://planetarycomputer.microsoft.com/api/stac/v1"
     catalog = pystacClient.open(stac)
     local_items = []
 
-    files_stack = [files[i:i+100] for i in range(0, len(files), 100)]
+    files_stack = [files[i : i + 100] for i in range(0, len(files), 100)]
     for s in files_stack:
-        local_items.extend(catalog.search(ids=s,
-                                          collections=[collection],
-                                          ).item_collection())
+        local_items.extend(
+            catalog.search(
+                ids=s,
+                collections=[collection],
+            ).item_collection()
+        )
     all_local_avail_items, _ = check_request_against_local(
-        local_items, out_path, requested_bands=requested_bands, report=False)
+        local_items, out_path, requested_bands=requested_bands, report=False
+    )
     return all_local_avail_items
 
 
@@ -1324,52 +1691,72 @@ def __lat_lon_from_geobox(geobox, x, y):
 
 
 def chunk_table_from_geobox(geobox, chunksize_xy, crs=4326, aoi=None):
-    num_lon_chunks = geobox.shape.y//chunksize_xy
-    num_lat_chunks = geobox.shape.x//chunksize_xy
+    num_lon_chunks = geobox.shape.y // chunksize_xy
+    num_lat_chunks = geobox.shape.x // chunksize_xy
 
-    lon_ch_id = list(range(chunksize_xy//2, num_lon_chunks *
-                           chunksize_xy, chunksize_xy))
-    lat_ch_id = list(range(chunksize_xy//2, num_lat_chunks *
-                           chunksize_xy, chunksize_xy))
+    lon_ch_id = list(
+        range(chunksize_xy // 2, num_lon_chunks * chunksize_xy, chunksize_xy)
+    )
+    lat_ch_id = list(
+        range(chunksize_xy // 2, num_lat_chunks * chunksize_xy, chunksize_xy)
+    )
 
     lon_lat_chunks = list(product(lon_ch_id, lat_ch_id))
-    lon_lat_coords = [__lat_lon_from_geobox(
-        geobox, *i) for i in lon_lat_chunks]
+    lon_lat_coords = [__lat_lon_from_geobox(geobox, *i) for i in lon_lat_chunks]
 
-    df_locs = pd.DataFrame({'lon_chunk': [l[0] for l in lon_lat_chunks],
-                            'lat_chunk': [l[1] for l in lon_lat_chunks],
-                            'lon_coord': [l[0] for l in lon_lat_coords],
-                            'lat_coord': [l[1] for l in lon_lat_coords],
-                            })
+    df_locs = pd.DataFrame(
+        {
+            "lon_chunk": [l[0] for l in lon_lat_chunks],
+            "lat_chunk": [l[1] for l in lon_lat_chunks],
+            "lon_coord": [l[0] for l in lon_lat_coords],
+            "lat_coord": [l[1] for l in lon_lat_coords],
+        }
+    )
 
-    gpd_locs = gpd.GeoDataFrame(df_locs,
-                                geometry=gpd.points_from_xy(df_locs.lon_coord,
-                                                            df_locs.lat_coord),
-                                crs=f"EPSG:{crs}")
+    gpd_locs = gpd.GeoDataFrame(
+        df_locs,
+        geometry=gpd.points_from_xy(df_locs.lon_coord, df_locs.lat_coord),
+        crs=f"EPSG:{crs}",
+    )
     if aoi:
         gpd_locs = gpd_locs.clip(aoi)
-        gpd_locs = gpd_locs.sort_values(
-            ['lon_chunk', 'lat_chunk']).reset_index(drop=True)
-        gpd_locs['chunk_id'] = gpd_locs.index
+        gpd_locs = gpd_locs.sort_values(["lon_chunk", "lat_chunk"]).reset_index(
+            drop=True
+        )
+        gpd_locs["chunk_id"] = gpd_locs.index
     return gpd_locs
 
 
-def get_slice_from_large_data(dataset, lat_slice, lon_slice, time_slice=None, dimension_names=None):
+def get_slice_from_large_data(
+    dataset, lat_slice, lon_slice, time_slice=None, dimension_names=None
+):
     if not dimension_names:
-        dimension_names = {'time': 'time',
-                           'latitude': 'latitude', 'longitude': 'longitude'}
+        dimension_names = {
+            "time": "time",
+            "latitude": "latitude",
+            "longitude": "longitude",
+        }
 
     if time_slice:
-        return dataset.isel({dimension_names['time']: slice(*time_slice),
-                            dimension_names['latitude']: slice(*lat_slice),
-                            dimension_names['longitude']: slice(*lon_slice)})
+        return dataset.isel(
+            {
+                dimension_names["time"]: slice(*time_slice),
+                dimension_names["latitude"]: slice(*lat_slice),
+                dimension_names["longitude"]: slice(*lon_slice),
+            }
+        )
     else:
-        return dataset.isel({dimension_names['latitude']: slice(*lat_slice),
-                            dimension_names['longitude']: slice(*lon_slice)})
+        return dataset.isel(
+            {
+                dimension_names["latitude"]: slice(*lat_slice),
+                dimension_names["longitude"]: slice(*lon_slice),
+            }
+        )
 
 
-def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, crs,
-                      grid_size=None):
+def _parallel_request(
+    start_date, end_date, collection, url, transform_to, aoi, crs, grid_size=None
+):
     """
     Request items in parallel.
     Will request items for a regular grid of points in the aoi.
@@ -1396,22 +1783,35 @@ def _parallel_request(start_date, end_date, collection, url, transform_to, aoi, 
         grid_size = 0.45
     elif grid_size is None and crs != 4326:
         grid_size = 50000
-        print('Assuming units of meters and grid size of 50 km for non 4326 crs!')
+        print("Assuming units of meters and grid size of 50 km for non 4326 crs!")
 
     lonmin, latmin, lonmax, latmax = aoi.bounds
 
     resolution = grid_size
-    X, Y = np.meshgrid(np.arange(latmin, latmax, resolution),
-                       np.arange(lonmin, lonmax, resolution))
+    X, Y = np.meshgrid(
+        np.arange(latmin, latmax, resolution), np.arange(lonmin, lonmax, resolution)
+    )
 
     points = list(zip(Y.flatten(), X.flatten()))
 
-    process = [(point)
-               for point in points if aoi.contains(Point(*point))]
+    process = [(point) for point in points if aoi.contains(Point(*point))]
 
-    request_partial = partial(request_items_parallel, start_date=start_date,
-                              end_date=end_date, collection=collection,
-                              url=url, transform_to=transform_to)
+    if len(process) == 0:
+        process = [
+            (lonmin, latmin),
+            (lonmax, latmax),
+            (lonmin, latmax),
+            (lonmax, latmin),
+        ]
+
+    request_partial = partial(
+        request_items_parallel,
+        start_date=start_date,
+        end_date=end_date,
+        collection=collection,
+        url=url,
+        transform_to=transform_to,
+    )
     do = []
     for p in process:
         do.append(dask.delayed(request_partial)(p))
@@ -1439,8 +1839,7 @@ def _check_parallel_request(items, requested_bands, path):
     for p in items:
         for i in p:
             for a in requested_bands:
-                save_path = os_path.join(
-                    *[path] + i.assets[a].href.split("/")[-6:])
+                save_path = os_path.join(*[path] + i.assets[a].href.split("/")[-6:])
                 if not os_path.exists(save_path):
                     assets.append((i.assets[a].href, save_path))
     return list(set(assets))
@@ -1490,12 +1889,12 @@ def items_to_dataframe(items, to_crs=None):
         asset_id.append(i.id)
         assets.append(list(i.assets.keys()))
         geometry.append(s_shape(i.geometry))
-    gdf = gpd.GeoDataFrame(d, geometry=geometry, crs='EPSG:4326')
-    gdf['asset_id'] = asset_id
-    gdf['assets'] = assets
-    gdf['asset_items'] = items
+    gdf = gpd.GeoDataFrame(d, geometry=geometry, crs="EPSG:4326")
+    gdf["asset_id"] = asset_id
+    gdf["assets"] = assets
+    gdf["asset_items"] = items
     if to_crs is not None:
-        gdf = gdf.to_crs(f'EPSG:{to_crs}')
+        gdf = gdf.to_crs(f"EPSG:{to_crs}")
     return gdf
 
 
@@ -1510,7 +1909,7 @@ def _load_otf_cube_bulk(subset, filtered_items, requested_bands=None, chunking=N
     ----------
     subset: GeoBox
         The geobox to subset the data to.
-    filtered_items: list of Items 
+    filtered_items: list of Items
         filtered items to load.
 
     Returns
@@ -1519,28 +1918,25 @@ def _load_otf_cube_bulk(subset, filtered_items, requested_bands=None, chunking=N
         The loaded cube.
     """
     if requested_bands is None:
-        requested_bands = ['B02', 'B03', 'B04', 'B8A']
+        requested_bands = ["B02", "B03", "B04", "B8A"]
 
-    avail_bands = list(
-        set([k for i in filtered_items for k in i.assets.keys()]))
+    avail_bands = list(set([k for i in filtered_items for k in i.assets.keys()]))
     [a for a in avail_bands if a in requested_bands]
 
     if chunking is None:
-        chunking = {'time': 1000,
-                    'latitude': 256,
-                    'longitude': 256}
+        chunking = {"time": 1000, "latitude": 256, "longitude": 256}
 
     otf_cube = odc_load(
         filtered_items,
         bands=avail_bands,
         chunks=chunking,
         geobox=subset,
-        dtype='uint16',
-        resampling='bilinear',
-        groupby='solar_day',
+        dtype="uint16",
+        resampling="bilinear",
+        groupby="solar_day",
     )
-    otf_cube = otf_cube.drop_vars(['spatial_ref'])
-    otf_cube['time'] = otf_cube.time.dt.floor('D')
+    otf_cube = otf_cube.drop_vars(["spatial_ref"])
+    otf_cube["time"] = otf_cube.time.dt.floor("D")
 
     return otf_cube
 
@@ -1553,44 +1949,52 @@ def _load_otf_cube_bulk(subset, filtered_items, requested_bands=None, chunking=N
 #             _write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names)
 
 
-def write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names):
+def write_otf_subset(
+    subset_slices_id_items, tmin, zarr_path, req_chunking, dimension_names
+):
     subset, slices, chunk_id, items = subset_slices_id_items
 
     # items = gdf.clip(subset.boundingbox)['asset_items'].to_list()
     # local_gdf = gdf.copy()
     if len(items) == 0:
         # local_gdf.loc[chunk_id, 'timerange_in_zarr'].append(['No items in subset'])
-        return chunk_id, 0, 0, ['No items in subset']
+        return chunk_id, 0, 0, ["No items in subset"]
     # items = gdf.clip(subset.boundingbox)['asset_items'].compute().to_list()
     # if len(items) == 0:
     #    return chunk_id, None, None, 'No items in subset'
-    cube = _load_otf_cube_bulk(subset=subset,
-                               filtered_items=items,
-                               requested_bands=None,
-                               chunking=req_chunking)
+    cube = _load_otf_cube_bulk(
+        subset=subset, filtered_items=items, requested_bands=None, chunking=req_chunking
+    )
 
-    min_time = cube['time'].min().values
-    max_time = cube['time'].max().values
+    min_time = cube["time"].min().values
+    max_time = cube["time"].max().values
 
     # return chunk_id, min_time, max_time, 'done'
 
-    cube = cube.reindex(time=pd.date_range(
-        min_time, max_time, freq='1D'), fill_value=0, method=None).chunk(req_chunking)
+    cube = cube.reindex(
+        time=pd.date_range(min_time, max_time, freq="1D"), fill_value=0, method=None
+    ).chunk(req_chunking)
 
-    t_insert_start = (min_time - pd.to_datetime(tmin).to_numpy()
-                      ).astype('timedelta64[D]').astype(int)
-    t_insert_end = (max_time - pd.to_datetime(tmin).to_numpy()
-                    ).astype('timedelta64[D]').astype(int) + 1
+    t_insert_start = (
+        (min_time - pd.to_datetime(tmin).to_numpy())
+        .astype("timedelta64[D]")
+        .astype(int)
+    )
+    t_insert_end = (max_time - pd.to_datetime(tmin).to_numpy()).astype(
+        "timedelta64[D]"
+    ).astype(int) + 1
 
     try:
-        cube.to_zarr(zarr_path, mode='r+', write_empty_chunks=False,
-                     region={
-                         dimension_names['time']: slice(t_insert_start, t_insert_end),
-                         dimension_names['latitude']: slice(slices[0],
-                                                            slices[1]),
-                         dimension_names['longitude']: slice(slices[2],
-                                                             slices[3])}
-                     )
+        cube.to_zarr(
+            zarr_path,
+            mode="r+",
+            write_empty_chunks=False,
+            region={
+                dimension_names["time"]: slice(t_insert_start, t_insert_end),
+                dimension_names["latitude"]: slice(slices[0], slices[1]),
+                dimension_names["longitude"]: slice(slices[2], slices[3]),
+            },
+        )
 
     # except CPLE_AppDefinedError as e:
     #     #return chunk_id, min_time, max_time, f'Error writing to zarr {e}'
@@ -1610,7 +2014,7 @@ def write_otf_subset(subset_slices_id_items, tmin, zarr_path, req_chunking, dime
     # return (chunk_id, np.datetime_as_string(min_time, unit='D'),
     #         np.datetime_as_string(max_time, unit='D'), 'sucess')
     # TODO: write back status and saved time to chunk_table
-    return chunk_id, min_time, max_time, 'sucess'
+    return chunk_id, min_time, max_time, "sucess"
 
 
 def get_size_of_list_elements(lst):
@@ -1631,13 +2035,17 @@ def check_assets(items):
         for i in items:
             for a in i.assets:
                 path = i.assets[a].href
-                if not path.startswith('/Net') or not os_path.exists(path):
+                if not path.startswith("/Net") or not os_path.exists(path):
                     not_found.append(path)
                 else:
                     try:
                         src = rio_open(path)
-                        src.read(1, window=Window(src.width-256, src.height-256,
-                                                  src.width, src.height))
+                        src.read(
+                            1,
+                            window=Window(
+                                src.width - 256, src.height - 256, src.width, src.height
+                            ),
+                        )
                     except (RasterioIOError, WarpOperationError, Exception) as e:
                         read_failed.append(path)
         # return None
