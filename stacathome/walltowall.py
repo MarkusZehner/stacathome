@@ -320,7 +320,7 @@ class MaxiCube:
 
         catalog = pystacClient.open(url)
         found = catalog.search(
-            intersects=subset,
+            bbox=subset.boundary.bounds,
             datetime=f"{start_date}/{end_date}",
             collections=[collection],
         ).item_collection()

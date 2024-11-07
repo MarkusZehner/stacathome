@@ -57,7 +57,7 @@ def leaflet_overview(gdf, chunktable=None, aoi=None, transform_to=None):
         # if t == '38PRQ':
         #     return gdf_ex_sub
         tab = Chart(gdf_ex_sub[['datetime', 'assets']]).mark_point(filled=True).encode(
-            x=alt_X('datetime:T', title='Time', axis=Axis(format="%Y %B")),
+            x=alt_X('datetime:T', title='Time'), #, axis=Axis(format="%Y %B")),
             y=alt_Y('assets', type='nominal', title='Assets'),
             color=alt_value('#18334E'),
         ).properties(
