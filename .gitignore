@@ -164,3 +164,4 @@ cython_debug/
 *.png
 *.jpg
 *.gif
+*.zarr
