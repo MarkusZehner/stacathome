@@ -29,6 +29,7 @@ from pyproj import CRS
 
 from stacathome.utils import get_transform
 
+
 # STAC query
 def request_data_by_tile(
     tile_id: str,
@@ -222,6 +223,7 @@ def S2_cube_part_in_native_res(
 
                 time.sleep(1)
 
+
 # download and save data
 def MODIS_cube_part(  # TODO: enable geobox (resampled) or boundingbox(native) as target area
     items: list[Item],
@@ -337,6 +339,7 @@ def MODIS_cube_part(  # TODO: enable geobox (resampled) or boundingbox(native) a
                         "Error: %s : %s" % (_out_path, e.strerror), flush=True
                     )  # TODO: to be replaced with logging
             time.sleep(1)
+
 
 # download and save data
 def save_stac_to_zarr_zip(
@@ -551,7 +554,7 @@ def __filter_for_existing_cubes(existing_cubes, locations, sensor="S2"):
 # TODO: drop/adapt these functions when v0 is fixed
 def __filter_years_to_process(
     locations, existing_dict, year_range_process=(2014, 2026)
-):  
+):
     """
     function to handle inconsistent downloaded data, to be removed when v0 is fixed.
     """
@@ -601,7 +604,7 @@ def __filter_years_to_process(
 
 
 # TODO: drop/adapt these functions when v0 is fixed
-def __find_consecutive_sequences(numbers:list) -> list:
+def __find_consecutive_sequences(numbers: list) -> list:
     """
     Find sequences of consecutive numbers in a list.
     """
@@ -801,9 +804,9 @@ def run_with_multiprocessing(target_function: function, **func_kwargs):
 
 
 # utility
-def harmonize_to_old(data:xr.Dataset, scale:bool=True) -> xr.Dataset:
+def harmonize_to_old(data: xr.Dataset, scale: bool = True) -> xr.Dataset:
     """
-    Harmonize new Sentinel-2 data to the old baseline. Data after 25-01-2022 is clipped 
+    Harmonize new Sentinel-2 data to the old baseline. Data after 25-01-2022 is clipped
     to 1000 and then subtracted by 1000.
     From https://planetarycomputer.microsoft.com/dataset/sentinel-2-l2a#Baseline-Change
     adjusted to odc-stac, using different variables for each band.
@@ -854,8 +857,9 @@ def harmonize_to_old(data:xr.Dataset, scale:bool=True) -> xr.Dataset:
         new[variable] = no_change[variable]
     return new
 
+
 # utility
-def drop_no_data_s2(cube:xr.Dataset, nodata_flag:int=0):
+def drop_no_data_s2(cube: xr.Dataset, nodata_flag: int = 0):
     """
     Dropping all-no-data time-steps, keeping int16 S2 Datasets in their dtype.
     Remove time slices where the mean of the B* bands is equal to the nodata_flag.
@@ -876,13 +880,15 @@ def drop_no_data_s2(cube:xr.Dataset, nodata_flag:int=0):
     mean_over_time = cube[var_name].mean(dim=["x", "y"])
     return cube.isel(time=np.where(mean_over_time != nodata_flag)[0])
 
+
 # utility
-def __open_s2_multires_cube_to_20m(paths_10m:list[str], paths_20m:list[str], 
-                                   paths_60m:list[str]) -> xr.Dataset:
+def __open_s2_multires_cube_to_20m(
+    paths_10m: list[str], paths_20m: list[str], paths_60m: list[str]
+) -> xr.Dataset:
     """
-    Open the batched Sentinel-2 from S2_cube_part_in_native_res and 
+    Open the batched Sentinel-2 from S2_cube_part_in_native_res and
     merge them into one Dataset with 20m target resolution.
-    Resampling 10m bands to 20m using linear interpolation 
+    Resampling 10m bands to 20m using linear interpolation
     and 60m bands to 20m using nearest neighbor.
 
     Parameters
@@ -931,7 +937,7 @@ def __open_s2_multires_cube_to_20m(paths_10m:list[str], paths_20m:list[str],
 
 
 # Combination
-def combine_and_save(location:str) -> None:
+def combine_and_save(location: str) -> None:
     """
     find all parts for a location, combine them and save them to a single zipped zarr file.
 
@@ -1634,7 +1640,7 @@ if __name__ == "__main__":
                 dtype="uint8",
                 geobox=box_20m,
             )
-    
+
     print("Done with ESA WC", flush=True)
 
     print("Combining", flush=True)
@@ -1642,34 +1648,34 @@ if __name__ == "__main__":
     contents = os.listdir(dev_path)
 
     for i in locs_dir.keys():
-        existing_cubes_old = [f for f in contents if 'fluxnet_' + '_'.join(i.split('_')[1:]) in f]
-        existing_cubes_old.sort()
-        existing_cubes_old_s2 = [f for f in existing_cubes_old if '_S2_' in f]
-        existing_cubes_old_modis = [f for f in existing_cubes_old if 'MODIS' in f]
-
-
-        # newer versions:
         existing_cubes_new = [f for f in contents if i in f]
         existing_cubes_new.sort()
-        existing_cubes_new_s2_10m = [f for f in existing_cubes_new if '_10m' in f]
-        existing_cubes_new_s2_20m = [f for f in existing_cubes_new if '_20m' in f]
-        existing_cubes_new_s2_60m = [f for f in existing_cubes_new if '_60m' in f]
-        existing_cubes_new_modis = [f for f in existing_cubes_new if 'MODIS' in f]
-        existing_cubes_new_wc = [f for f in existing_cubes_new if 'ESA_WC' in f]
+        existing_cubes_new_s2_10m = [f for f in existing_cubes_new if "_10m" in f]
+        existing_cubes_new_s2_20m = [f for f in existing_cubes_new if "_20m" in f]
+        existing_cubes_new_s2_60m = [f for f in existing_cubes_new if "_60m" in f]
+        existing_cubes_new_modis = [f for f in existing_cubes_new if "MODIS" in f]
+        existing_cubes_new_wc = [f for f in existing_cubes_new if "ESA_WC" in f]
 
-        locs_dir[i]['data'] = {'old_s2' : existing_cubes_old_s2,
-                            'old_modis': existing_cubes_old_modis,
-                            'new_s2_10m': existing_cubes_new_s2_10m,
-                            'new_s2_20m': existing_cubes_new_s2_20m,
-                            'new_s2_60m': existing_cubes_new_s2_60m,
-                            'new_modis': existing_cubes_new_modis,
-                            'new_wc': existing_cubes_new_wc,
-                            }
+        locs_dir[i]["data"] = {
+            "new_s2_10m": existing_cubes_new_s2_10m,
+            "new_s2_20m": existing_cubes_new_s2_20m,
+            "new_s2_60m": existing_cubes_new_s2_60m,
+            "new_modis": existing_cubes_new_modis,
+            "new_wc": existing_cubes_new_wc,
+        }
 
     for i in locs_dir.keys():
-        if locs_dir[i]['data']['old_s2'] == [] and locs_dir[i]['data']['old_modis'] == []:
-            if (len(locs_dir[i]['data']['new_s2_10m']) == len(locs_dir[i]['data']['new_s2_20m']) == len(locs_dir[i]['data']['new_s2_60m'])  
-                and len(locs_dir[i]['data']['new_s2_60m']) > 0  and len(locs_dir[i]['data']['new_modis']) > 0 and len(locs_dir[i]['data']['new_wc']) > 0):
-                #if not i in unfinished_locations:
-                    print(i, flush=True)
-                    combine_and_save(i)
+        if (
+            locs_dir[i]["data"]["old_s2"] == []
+            and locs_dir[i]["data"]["old_modis"] == []
+        ):
+            if (
+                len(locs_dir[i]["data"]["new_s2_10m"])
+                == len(locs_dir[i]["data"]["new_s2_20m"])
+                == len(locs_dir[i]["data"]["new_s2_60m"])
+                and len(locs_dir[i]["data"]["new_s2_60m"]) > 0
+                and len(locs_dir[i]["data"]["new_modis"]) > 0
+                and len(locs_dir[i]["data"]["new_wc"]) > 0
+            ):
+                print(i, flush=True)
+                combine_and_save(i)
