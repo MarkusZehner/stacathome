@@ -1634,3 +1634,42 @@ if __name__ == "__main__":
                 dtype="uint8",
                 geobox=box_20m,
             )
+    
+    print("Done with ESA WC", flush=True)
+
+    print("Combining", flush=True)
+
+    contents = os.listdir(dev_path)
+
+    for i in locs_dir.keys():
+        existing_cubes_old = [f for f in contents if 'fluxnet_' + '_'.join(i.split('_')[1:]) in f]
+        existing_cubes_old.sort()
+        existing_cubes_old_s2 = [f for f in existing_cubes_old if '_S2_' in f]
+        existing_cubes_old_modis = [f for f in existing_cubes_old if 'MODIS' in f]
+
+
+        # newer versions:
+        existing_cubes_new = [f for f in contents if i in f]
+        existing_cubes_new.sort()
+        existing_cubes_new_s2_10m = [f for f in existing_cubes_new if '_10m' in f]
+        existing_cubes_new_s2_20m = [f for f in existing_cubes_new if '_20m' in f]
+        existing_cubes_new_s2_60m = [f for f in existing_cubes_new if '_60m' in f]
+        existing_cubes_new_modis = [f for f in existing_cubes_new if 'MODIS' in f]
+        existing_cubes_new_wc = [f for f in existing_cubes_new if 'ESA_WC' in f]
+
+        locs_dir[i]['data'] = {'old_s2' : existing_cubes_old_s2,
+                            'old_modis': existing_cubes_old_modis,
+                            'new_s2_10m': existing_cubes_new_s2_10m,
+                            'new_s2_20m': existing_cubes_new_s2_20m,
+                            'new_s2_60m': existing_cubes_new_s2_60m,
+                            'new_modis': existing_cubes_new_modis,
+                            'new_wc': existing_cubes_new_wc,
+                            }
+
+    for i in locs_dir.keys():
+        if locs_dir[i]['data']['old_s2'] == [] and locs_dir[i]['data']['old_modis'] == []:
+            if (len(locs_dir[i]['data']['new_s2_10m']) == len(locs_dir[i]['data']['new_s2_20m']) == len(locs_dir[i]['data']['new_s2_60m'])  
+                and len(locs_dir[i]['data']['new_s2_60m']) > 0  and len(locs_dir[i]['data']['new_modis']) > 0 and len(locs_dir[i]['data']['new_wc']) > 0):
+                #if not i in unfinished_locations:
+                    print(i, flush=True)
+                    combine_and_save(i)
