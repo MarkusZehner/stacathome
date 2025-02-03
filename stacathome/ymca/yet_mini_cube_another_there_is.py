@@ -765,44 +765,6 @@ def run_with_multiprocessing(target_function: function, **func_kwargs):
     time.sleep(0.1)
 
 
-# # utility
-# def resample_s2(ds:xr.Dataset, upscale_factor, resampling):
-#     return ds.rio.reproject(
-#         ds.rio.crs,
-#         shape=(int(ds.rio.width * upscale_factor), int(ds.rio.width * upscale_factor)),
-#         resampling=resampling,
-#     )
-
-
-# # utility
-# def add_s2_parts_resample(file_list, upscale_factor=0):
-#     if upscale_factor > 0:
-#         resampling = Resampling.nearest
-#     if upscale_factor < 0:
-#         resampling = Resampling.bilinear
-
-#     # xds = xr.open_zarr(file_list[0])
-#     # crs = CRS.from_wkt(xds.spatial_ref.attrs["spatial_ref"])
-#     # xds.rio.write_crs(crs, inplace=True)
-
-#     # if upscale_factor != 0:
-#     #     xds = resample_s2(xds, upscale_factor, resampling)
-
-#     xds_list = []
-
-#     for _file in file_list:
-#         xds_t = xr.open_zarr(_file)
-#         crs = CRS.from_wkt(xds_t.spatial_ref.attrs["spatial_ref"])
-#         xds_t.rio.write_crs(crs, inplace=True)
-
-#         if upscale_factor != 0:
-#             xds_t = resample_s2(xds_t, upscale_factor, resampling)
-
-#         xds_list.append(xds_t)
-
-#     return xr.merge(xds_list)
-
-
 # utility
 def harmonize_to_old(data: xr.Dataset, scale: bool = True) -> xr.Dataset:
     """
