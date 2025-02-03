@@ -1,6 +1,9 @@
 from os import listdir, rmdir, path as os_path
 from functools import partial
 
+import json
+import pickle
+
 from pyproj import Proj, Transformer
 from requests import get as requests_get
 
@@ -137,3 +140,12 @@ def check_if_country_in_repo(name):
             possible_matches}"
         )
         return None
+
+
+
+def pickled_items_to_json(pickled_items, json_file):
+    stac_json = []
+    for item in pickled_items:
+        stac_json.append(item.to_dict())
+    json_dict = {'type': 'FeatureCollection', 'features': stac_json}    
+    json.dump(json_dict, open(json_file, 'w'))
