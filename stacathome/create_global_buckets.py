@@ -6,8 +6,7 @@ from shapely.affinity import translate
 import geopandas as gpd
 from tqdm import tqdm
 from shapely import unary_union
-from urllib.request import urlretrieve
-import zipfile
+from urllib.request import urlretrieve, urlopen
 import io
 
 
@@ -171,87 +170,72 @@ def apply_fishnet_to_utm_grid_zone(
 
 
 def get_natural_earth_landcover(
-    temp_folder: str = "aux_data",
     filename: str = "natural_earth_vector_ne_10m_land.parquet",
-    cleanup: bool = True,
 ) -> gpd.GeoDataFrame:
     """
-    download the Natural Earth 10m landcover dataset and return it as a geopandas dataframe
-    or load from disk if already downloaded
+    Download the Natural Earth 10m landcover dataset and return it as a geopandas dataframe,
+    or load it from disk if already downloaded and processed.
+
+    Parameters
+    ----------
+    temp_folder : str, optional
+
+    filename : str, optional
+
     """
-    parquet_file = os.path.join(temp_folder, filename)
-    if os.path.exists(parquet_file):
-        return gpd.read_parquet(parquet_file)
-    natural_earth_vector_zip, _ = urlretrieve(
-        "https://naciscdn.org/naturalearth/packages/natural_earth_vector.gpkg.zip"
-    )
-    with open(natural_earth_vector_zip, "rb") as f:
-        zip_bytes = f.read()
-    zip_buffer = io.BytesIO(zip_bytes)
-    with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-        file_names = zip_file.namelist()
-        gpkg_filename = next(f for f in file_names if f.endswith(".gpkg"))
-        with zip_file.open(gpkg_filename) as file:
-            gpd.read_file(io.BytesIO(file.read()), layer="ne_10m_land").to_parquet(
-                parquet_file
-            )
-    return gpd.read_parquet(parquet_file)
+    if not os.path.exists(filename):
+        geojson_url = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson"
+        response = urlopen(geojson_url)
+        geojson_data = io.BytesIO(response.read())
+        gdf = gpd.read_file(geojson_data)
+        gdf.to_parquet(filename)
+
+    return gpd.read_parquet(filename)
 
 
 def get_sentinel2_grid(
-    temp_folder: str = "aux_data",
-    filename: str = "sentinel-2-grid.parquet",
-    cleanup: bool = True,
+    filenames: tuple[str] = ("sentinel-2-grid.parquet", "sentinel-2-grid_LAND.parquet"),
 ) -> gpd.GeoDataFrame:
     """
     download the Sentinel-2 UTM grid dataset and return it as a geopandas dataframe
     or load from disk if already downloaded
+
+    Parameters
+    ----------
+    filenames : tuple[str], optional
+        Filenames of the Sentinel-2 UTM grid datasets, by default ("sentinel-2-grid.parquet", "sentinel-2-grid_LAND.parquet").
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        Sentinel-2 UTM grid datasets.
     """
-    parquet_file = os.path.join(temp_folder, filename)
-    if os.path.exists(parquet_file):
-        return gpd.read_parquet(parquet_file)
-
-    os.makedirs(temp_folder, exist_ok=True)
-    urlretrieve(
-        "https://github.com/maawoo/sentinel-2-grid-geoparquet/blob/main/sentinel-2-grid.parquet?raw=true",
-        os.path.join(temp_folder, filename),
-    )
-    return gpd.read_parquet(parquet_file)
-
-
-def get_sentinel2_grid_land(
-    temp_folder: str = "aux_data",
-    filename: str = "sentinel-2-grid_LAND.parquet",
-    cleanup: bool = True,
-) -> gpd.GeoDataFrame:
-    """
-    download the Sentinel-2 UTM land grid dataset and return it as a geopandas dataframe
-    or load from disk if already downloaded
-    """
-    parquet_file = os.path.join(temp_folder, filename)
-    if os.path.exists(parquet_file):
-        return gpd.read_parquet(parquet_file)
-
-    os.makedirs(temp_folder, exist_ok=True)
-    urlretrieve(
-        "https://github.com/maawoo/sentinel-2-grid-geoparquet/blob/main/sentinel-2-grid_LAND.parquet?raw=true",
-        os.path.join(temp_folder, filename),
-    )
-    return gpd.read_parquet(parquet_file)
+    if not os.path.exists(filenames[0]):
+        urlretrieve(
+            "https://github.com/maawoo/sentinel-2-grid-geoparquet/blob/main/sentinel-2-grid.parquet?raw=true",
+            filenames[0],
+        )
+    if not os.path.exists(filenames[1]):
+        urlretrieve(
+            "https://github.com/maawoo/sentinel-2-grid-geoparquet/blob/main/sentinel-2-grid_LAND.parquet?raw=true",
+            filenames[1],
+        )
+    return gpd.read_parquet(filenames[0]), gpd.read_parquet(filenames[1])
 
 
 def create_global_buckets(
     gridsize_m: int = 5040,
     temp_folder: str = "bucket_temp",
-    aux_folder: str = "aux_data",
+    aux_folder: str = None,
     out_file_name: str = "S2_buckets_world",
     sentinel2_grid: str = "sentinel-2-grid.parquet",
     sentinel2_grid_land: str = "sentinel-2-grid_LAND.parquet",
     natural_earth_land: str = "natural_earth_vector_ne_10m_land.parquet",
 ) -> None:
     """
-    function to create a global fishnet of Sentinel-2 UTM tiles, where the fishnet is clipped to the land area.
-    the current implementation just clips the utm zones from the right.
+    Function to create a global fishnet of Sentinel-2 UTM tiles, where the fishnet is clipped to the land area.
+    The current implementation just clips the UTM zones from the right.
+    Intermediate results for each UTM zone are stored in the temp_folder.
 
     Parameters
     ----------
@@ -272,11 +256,16 @@ def create_global_buckets(
     None
 
     """
+    if aux_folder is not None:
+        os.makedirs(temp_folder, exist_ok=True)
+        sentinel2_grid = os.path.join(aux_folder, sentinel2_grid)
+        sentinel2_grid_land = os.path.join(aux_folder, sentinel2_grid_land)
+        natural_earth_land = os.path.join(aux_folder, natural_earth_land)
 
-    sentinel2_grid = get_sentinel2_grid(aux_folder, sentinel2_grid)
-    sentinel2_grid_land = get_sentinel2_grid_land(aux_folder, sentinel2_grid_land)
+    sentinel2_grid = get_sentinel2_grid(sentinel2_grid)
+    sentinel2_grid_land = get_sentinel2_grid(sentinel2_grid_land)
     natural_earth_land = unary_union(
-        get_natural_earth_landcover(aux_folder, natural_earth_land)["geometry"]
+        get_natural_earth_landcover(natural_earth_land)["geometry"]
     )
 
     out_file = f"{out_file_name}_grid_{gridsize_m}.parquet"
@@ -355,3 +344,7 @@ def create_global_buckets(
         crs=4326,
     )
     fish_inland.to_parquet(out_file, engine="pyarrow")
+
+
+if __name__ == "__main__":
+    create_global_buckets(aux_folder=None)
