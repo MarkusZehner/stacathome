@@ -26,6 +26,7 @@ from rasterio.errors import WarpOperationError, RasterioIOError
 from rasterio.enums import Resampling
 from rasterio.warp import calculate_default_transform
 from pyproj import CRS
+from collections.abc import Callable
 
 from stacathome.utils import get_transform
 
@@ -125,6 +126,7 @@ def S2_cube_part_in_native_res(
     request_geobox: GeoBox,
     sel_bands: list[str],
     asset_bin_size: int = 50,
+    filter_coverage=True,
 ) -> None:
     """
     Processing the items into cubes in size of the request_geobox, stored in out_path.
@@ -159,9 +161,12 @@ def S2_cube_part_in_native_res(
     transformed_box = transform(
         box(*bounds), get_transform(str(crs).split(":")[1], 4326)
     )
-    items_with_data_coverage = __filter_items_to_data_coverage(
-        items, transformed_box, sensor="S2"
-    )
+    if filter_coverage:
+        items_with_data_coverage = __filter_items_to_data_coverage(
+            items, transformed_box, sensor="S2"
+        )
+    else:
+        items_with_data_coverage = items
 
     print(  # TODO: to be replaced with logging
         f"Processing {len(items_with_data_coverage)} items for {out_path}", flush=True
@@ -736,7 +741,7 @@ def get_rs_product_tiles_for_locs(
 
 
 # utility
-def run_with_multiprocessing(target_function: function, **func_kwargs):
+def run_with_multiprocessing(target_function: Callable, **func_kwargs):
     """
     Wrapper to execute a function in separate processes to isolate memory leaks.
     will retry the function 3 times if it fails.
