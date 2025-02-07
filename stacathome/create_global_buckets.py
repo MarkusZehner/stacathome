@@ -1,13 +1,14 @@
 import os
+import io
 import numpy as np
 import pandas as pd
-from shapely.geometry import Polygon
-from shapely.affinity import translate
 import geopandas as gpd
-from tqdm import tqdm
+from shapely.geometry import Polygon, MultiPolygon, LineString
+from shapely.affinity import translate
+from shapely.ops import split
 from shapely import unary_union
+from tqdm import tqdm
 from urllib.request import urlretrieve, urlopen
-import io
 
 
 def define_grid_along_axis(len_bounds: int, grid_size: int) -> tuple[int, int, int]:
@@ -86,11 +87,13 @@ def fishnet_s2_utm_tile(
 
     if abs(x_offset) > min_overlap or abs(y_offset) > min_overlap:
         raise ValueError(
-            f"Overlap is too little, leads to missing coverage: {x_offset}, {y_offset}"
+            f"Overlap is too little, leads to missing coverage: {
+                x_offset}, {y_offset}"
         )
     if abs(x_offset) % 60 != 0 or abs(y_offset) % 60 != 0:
         raise ValueError(
-            f"Overlap not divisible by 60, requires resampling of coarse bands: {x_offset}, {y_offset}"
+            f"Overlap not divisible by 60, requires resampling of coarse bands: {
+                x_offset}, {y_offset}"
         )
 
     if create_template:
@@ -105,7 +108,8 @@ def fishnet_s2_utm_tile(
             y = bounds[1] + y_offset + j * ysize
             # create the polygon
             poly = Polygon(
-                [(x, y), (x + xsize, y), (x + xsize, y + ysize), (x, y + ysize), (x, y)]
+                [(x, y), (x + xsize, y), (x + xsize,
+                                          y + ysize), (x, y + ysize), (x, y)]
             )
             fishnet.append(poly)
     return gpd.GeoDataFrame(
@@ -159,8 +163,10 @@ def apply_fishnet_to_utm_grid_zone(
     template = fishnet_s2_utm_tile(
         utm_grid_part.iloc[0], gridsize, gridsize, create_template=True
     )
-    fish = utm_grid_part.apply(lambda tile: apply_template(template, tile), axis=1)
-    fish = gpd.GeoDataFrame(pd.concat(fish.to_list(), ignore_index=True), crs=zone)
+    fish = utm_grid_part.apply(
+        lambda tile: apply_template(template, tile), axis=1)
+    fish = gpd.GeoDataFrame(
+        pd.concat(fish.to_list(), ignore_index=True), crs=zone)
     fish["epsg"] = fish.crs.to_epsg()
     fish["utm_wkt"] = fish["geometry"].apply(lambda geom: geom.wkt)
     fish["utm_bounds"] = fish["geometry"].apply(lambda geom: geom.bounds)
@@ -184,7 +190,10 @@ def get_natural_earth_landcover(
 
     """
     if not os.path.exists(filename):
-        geojson_url = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson"
+        geojson_url = (
+            "https://raw.githubusercontent.com/nvkelso/"
+            + "natural-earth-vector/master/geojson/ne_10m_land.geojson"
+        )
         response = urlopen(geojson_url)
         geojson_data = io.BytesIO(response.read())
         gdf = gpd.read_file(geojson_data)
@@ -194,7 +203,8 @@ def get_natural_earth_landcover(
 
 
 def get_sentinel2_grid(
-    filenames: tuple[str] = ("sentinel-2-grid.parquet", "sentinel-2-grid_LAND.parquet"),
+    filenames: tuple[str] = ("sentinel-2-grid.parquet",
+                             "sentinel-2-grid_LAND.parquet"),
 ) -> gpd.GeoDataFrame:
     """
     download the Sentinel-2 UTM grid dataset and return it as a geopandas dataframe
@@ -203,7 +213,8 @@ def get_sentinel2_grid(
     Parameters
     ----------
     filenames : tuple[str], optional
-        Filenames of the Sentinel-2 UTM grid datasets, by default ("sentinel-2-grid.parquet", "sentinel-2-grid_LAND.parquet").
+        Filenames of the Sentinel-2 UTM grid datasets,
+        by default ("sentinel-2-grid.parquet", "sentinel-2-grid_LAND.parquet").
 
     Returns
     -------
@@ -223,6 +234,31 @@ def get_sentinel2_grid(
     return gpd.read_parquet(filenames[0]), gpd.read_parquet(filenames[1])
 
 
+def split_antimeridian(geom):
+    """
+    Splits a polygon at the antimeridian and returns a MultiPolygon if necessary.
+    """
+    if isinstance(geom, Polygon):
+        xs = [(p[0]+360) % 360 for p in geom.exterior.coords]
+        if max(xs) > 180 and min(xs) < 180:
+            geom_new = Polygon([((c[0]+360) % 360, c[1])
+                               for c in geom.exterior.coords])
+            antimeridian = LineString(
+                [(180, -90), (180, 90)])  # Vertical split line
+            split_geom = split(geom_new, antimeridian)
+
+            fixed_parts = []
+            for part in split_geom.geoms:
+                xs = [p[0] for p in part.exterior.coords]
+                if max(xs) > 180:
+                    part = [(x - 360, y) for x, y in part.exterior.coords]
+                fixed_parts.append(Polygon(part))
+
+            return MultiPolygon(fixed_parts)
+
+    return geom  # Return unchanged if it doesn't cross 180°
+
+
 def create_global_buckets(
     gridsize_m: int = 5040,
     temp_folder: str = "bucket_temp",
@@ -236,6 +272,13 @@ def create_global_buckets(
     Function to create a global fishnet of Sentinel-2 UTM tiles, where the fishnet is clipped to the land area.
     The current implementation just clips the UTM zones from the right.
     Intermediate results for each UTM zone are stored in the temp_folder.
+
+    Uses the S2_utm grids from
+    [maawoo/sentinel-2-grid-geoparquet](https://github.com/maawoo/sentinel-2-grid-geoparquet)
+    based on [scottyhq/mgrs](https://github.com/scottyhq/mgrs) and
+    [NaturalEarthdata 10m land]
+    (https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_10m_land.geojson)
+    layer.
 
     Parameters
     ----------
@@ -299,10 +342,12 @@ def create_global_buckets(
                 sentinel2_grid_land_enlarged, epsgs_s[i - 1], gridsize_m * 20
             )
             previous_n = unary_union(
-                previous_n.to_crs(epsgs_n[i - 1]).buffer(0.01).to_crs(4326).buffer(0)
+                previous_n.to_crs(
+                    epsgs_n[i - 1]).buffer(0.01).to_crs(4326).buffer(0)
             )
             previous_s = unary_union(
-                previous_s.to_crs(epsgs_s[i - 1]).buffer(0.01).to_crs(4326).buffer(0)
+                previous_s.to_crs(
+                    epsgs_s[i - 1]).buffer(0.01).to_crs(4326).buffer(0)
             )
 
             # combine the two previous N and S utm zones
@@ -319,12 +364,14 @@ def create_global_buckets(
             ).dropna()
             fish_temp = fish_temp.where(
                 fish_temp.apply(
-                    lambda row: Polygon(row["geometry"]).intersects(natural_earth_land),
+                    lambda row: Polygon(row["geometry"]).intersects(
+                        natural_earth_land),
                     axis=1,
                 )
             ).dropna()
             fish_temp.to_parquet(
-                os.path.join(temp_folder, f"fishnet_part_{epsgs_list[i]}.parquet"),
+                os.path.join(temp_folder, f"fishnet_part_{
+                             epsgs_list[i]}.parquet"),
                 engine="pyarrow",
             )
 
@@ -343,6 +390,12 @@ def create_global_buckets(
         ),
         crs=4326,
     )
+
+    gdf_filtered = fish_inland[fish_inland["epsg"].isin(
+        [32601, 32660, 32701, 32760])]
+    fish_inland.loc[gdf_filtered.index, "geometry"] = gdf_filtered["geometry"].apply(
+        split_antimeridian)
+
     fish_inland.to_parquet(out_file, engine="pyarrow")
 
 
