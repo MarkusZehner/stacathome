@@ -1,6 +1,5 @@
 # yet more cubing attempts!
 from shapely import Point
-
 from wedata.stac_downloader.combine import combine_to_cube
 from wedata.stac_downloader.download import download_request_from_probe
 from wedata.stac_downloader.request import build_request_from_probe, probe_request

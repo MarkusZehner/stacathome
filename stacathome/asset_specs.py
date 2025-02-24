@@ -11,14 +11,8 @@ def supported_mspc_collections(S2_tile_grid: str = None, MODIS_grid: str = None,
     """
 
     return {
-        "sentinel-2-l2a": {
-            "filter_arg": "s2:mgrs_tile",
-            "grid": S2_tile_grid,
-            "attributes": sentinel_2_attributes()},
-        "modis-13Q1-061": {
-            "filter_arg": "modis:tile-id",
-            "grid": MODIS_grid,
-            "attributes": modis_16d_attributes()},
+        "sentinel-2-l2a": {"filter_arg": "s2:mgrs_tile", "grid": S2_tile_grid, "attributes": sentinel_2_attributes()},
+        "modis-13Q1-061": {"filter_arg": "modis:tile-id", "grid": MODIS_grid, "attributes": modis_16d_attributes()},
         "esa-worldcover": {
             "filter_arg": "esa_worldcover:product_tile",
             "grid": ESA_WorldCover_grid,
@@ -28,7 +22,7 @@ def supported_mspc_collections(S2_tile_grid: str = None, MODIS_grid: str = None,
             "filter_arg": None,
             "grid": None,
             "attributes": None,
-        }
+        },
     }
 
 

@@ -1,10 +1,10 @@
 import os
 import time
-
-from urllib.request import urlretrieve
 from concurrent.futures import ThreadPoolExecutor
-import zarr
+from urllib.request import urlretrieve
+
 import planetary_computer as pc
+import zarr
 from odc.stac import load
 from rasterio.errors import RasterioIOError, WarpOperationError
 from shapely import box, transform

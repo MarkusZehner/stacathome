@@ -14,9 +14,9 @@ from pyproj import CRS
 from rasterio.errors import RasterioIOError, WarpOperationError
 from shapely import box, transform
 
-from .utils import filter_items_to_data_coverage, get_time_binning, get_transform, run_with_multiprocessing
-from .request import request_data_by_tile
 from .asset_specs import get_attributes, get_band_attributes_s2
+from .request import request_data_by_tile
+from .utils import filter_items_to_data_coverage, get_time_binning, get_transform, run_with_multiprocessing
 
 
 BASE_ATTRS = {

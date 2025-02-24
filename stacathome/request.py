@@ -19,7 +19,7 @@ def probe_request(
     collection: str | list[str] = 'sentinel-2-l2a',
     url: str = "https://planetarycomputer.microsoft.com/api/stac/v1",
     return_box=False,
-    limit = 12,
+    limit=12,
 ):
     """
     Function to probe a STAC Catalog for a given area, defined by a point and a edge length in meters.
@@ -48,7 +48,7 @@ def probe_collection(
     collection: str = 'sentinel-2-l2a',
     url: str = "https://planetarycomputer.microsoft.com/api/stac/v1",
     return_box=False,
-    limit = 12,
+    limit=12,
 ):
     crs_code = get_utm_crs_from_lon_lat(point_wgs84.x, point_wgs84.y)
     tr = get_transform(4326, crs_code)
