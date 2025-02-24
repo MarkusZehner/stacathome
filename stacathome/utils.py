@@ -1,48 +1,169 @@
-from os import listdir, rmdir, path as os_path
+import multiprocessing
+import time
+from collections.abc import Callable
 from functools import partial
 
-import json
-import pickle
-
+import numpy as np
+import pandas as pd
+from odc.geo.geobox import BoundingBox
 from pyproj import Proj, Transformer
-from requests import get as requests_get
+from pystac import Item
+from shapely import Point, Polygon
 
-def remove_empty_folders(paths, base_folder):
-    # Normalize base folder path to avoid issues with relative paths
-    base_folder = os_path.abspath(base_folder)
 
-    def delete_if_empty(folder):
-        """Recursively delete folder and its empty parents within base folder"""
-        folder = os_path.abspath(folder)
-        
-        # Ensure folder is within base folder
-        if folder.startswith(base_folder) and os_path.isdir(folder):
-            try:
-                # If the folder is empty, delete it
-                if not listdir(folder):
-                    rmdir(folder)
-                    print(f"Deleted empty folder: {folder}")
-                    
-                    # Check parent folder if it's not the base folder
-                    parent_folder = os_path.dirname(folder)
-                    if parent_folder != base_folder:
-                        delete_if_empty(parent_folder)  # Recursively check the parent
-                else:
-                    print(f"Skipped (not empty): {folder}")
-            except Exception as e:
-                print(f"Failed to delete {folder}: {e}")
-        else:
-            print(f"Skipped (outside base folder or not a directory): {folder}")
+def time_range_parser(time_range):
+    if isinstance(time_range, int):
+        return str(time_range)
+    elif isinstance(time_range, (tuple, list)):
+        if len(time_range) != 2:
+            raise ValueError("Time range must be a tuple or list of length 2")
+        return f"{time_range[0]}/{time_range[1]}"
+    else:
+        raise ValueError("Time range must be an integer or a tuple or list of integers")
 
-    # Process each folder in the provided paths
-    for folder in paths:
-        delete_if_empty(folder)
+
+def cut_box_to_edge_around_coords(point, gbox, n_pix_edge):
+    y_center = np.argmin(np.abs(gbox.coordinates["y"].values - point.y))
+    x_center = np.argmin(np.abs(gbox.coordinates["x"].values - point.x))
+
+    min_y = y_center - (n_pix_edge // 2)
+    min_x = x_center - (n_pix_edge // 2)
+
+    return gbox[
+        min_y : min_y + n_pix_edge,
+        min_x : min_x + n_pix_edge,
+    ]
+
+
+def get_utm_crs_from_lon_lat(lon, lat):
+    utm_zone = int(np.floor(lon + 180) / 6) + 1
+    # Handle Norway 32V anomaly
+    if (56 <= lat < 64) and (3 <= lon < 6):
+        utm_zone = 32
+    # Handle Svalbard zones
+    if 72 <= lat < 84:
+        if 0 <= lon < 9:
+            utm_zone = 31
+        elif 9 <= lon < 21:
+            utm_zone = 33
+        elif 21 <= lon < 33:
+            utm_zone = 35
+        elif 33 <= lon < 42:
+            utm_zone = 37
+
+    hemisphere = 700 if lat < 0 else 600
+    return 32000 + hemisphere + utm_zone
+
+
+def dms_to_decimal(degrees, minutes, seconds, direction):
+    decimal = int(degrees) + int(minutes) / 60 + float(seconds) / 3600
+    if direction in ['S', 'W']:
+        decimal *= -1
+    return decimal
+
+
+def parse_dms_to_lon_lat_point(dms_string):
+    dms_string = dms_string.replace('°', '-').replace('\'', '-').replace('"', '-')
+    dms_string = dms_string.split(' ')
+    lat = dms_to_decimal(*dms_string[0].split('-'))
+    lon = dms_to_decimal(*dms_string[1].split('-'))
+    return Point(lon, lat)
+
+
+def parse_dec_to_lon_lat_point(dec_string):
+    lat, lon = map(float, dec_string.split(','))
+    return Point(lon, lat)
+
+
+def get_time_binning(
+    timeframe: int | tuple[int] | tuple[str],
+    start_of_time: str = '1980-01-01',
+    end_of_time: str = '2030-01-01',
+    t_freq: str = '15D',
+):
+    """
+    Generate a common time binning and return periods of interest.
+    """
+    # add other timeframe selection options?
+    time_bins = pd.date_range(start=start_of_time, end=end_of_time, freq=t_freq)
+    if isinstance(timeframe, int) and timeframe in time_bins.year:
+        return time_bins.where(time_bins.year == timeframe).dropna()
+    elif isinstance(timeframe, tuple) and len(timeframe) == 2 and all(year in time_bins.year for year in timeframe):
+        return time_bins.where((time_bins.year >= timeframe[0]) & (time_bins.year <= timeframe[1])).dropna()
+    elif isinstance(timeframe, tuple) and isinstance(timeframe[0], str):
+        return time_bins.where((time_bins >= timeframe[0]) & (time_bins <= timeframe[1])).dropna()
+    else:
+        return time_bins
+
+
+def filter_items_to_data_coverage(items: list[Item], bbox: BoundingBox, sensor: str = "S2") -> list[Item]:
+    """
+    Using the data coverage geometry in the STAC item to filter the items and remove
+    those that do not intersect with the requested bounds.
+    also sorts the items by ascending datetime.
+
+    Parameters
+    ----------
+    items : list[Item]
+        List of pystac.Item objects.
+    bbox : BoundingBox
+        The bounding box to filter the items by.
+    sensor : str, optional
+        The sensor to filter the items by, by default "S2".
+    """
+    sort_by = {
+        'sentinel-2-l2a': "datetime",
+        'modis-13Q1-061': "start_datetime",
+        'esa-worldcover': "start_datetime",
+    }
+    if sensor not in sort_by.keys():
+        raise ValueError("Sensor not (yet) supported.")
+
+    items_within = []
+    for i in range(len(items)):
+        if Polygon(*items[i].geometry["coordinates"]).contains_properly(bbox):
+            items_within.append(items[i])
+    if len(items_within) > 0:
+        items_within = sorted(items_within, key=lambda x: x.properties[sort_by[sensor]])
+    return items_within
+
+
+def run_with_multiprocessing(target_function: Callable, **func_kwargs):
+    """
+    Wrapper to execute a function in separate processes to isolate memory leaks.
+    will retry the function 3 times if it fails.
+
+    Args:
+        target_function (callable): The function to run in a separate process.
+        num_runs (int): The number of times to execute the function in separate processes.
+        func_args (tuple): Positional arguments for the target function.
+        func_kwargs (dict): Keyword arguments for the target function.
+    """
+    for _ in range(3):
+        process = multiprocessing.Process(target=target_function, kwargs=func_kwargs, name="throwawayWorker")
+
+        process.start()
+        process.join()
+        if process.exitcode is None:
+            print("Process Worker did not exit cleanly, terminating...")
+            process.terminate()
+
+        print(f"Process Worker completed with exit code {process.exitcode}")
+        if process.exitcode == 0:
+            break
+
+    time.sleep(0.1)
 
 
 def get_transform(from_crs, to_crs, always_xy=True):
+    if isinstance(from_crs, int) or isinstance(from_crs, str) and len(from_crs) < 6:
+        from_crs = Proj(f"epsg:{from_crs}")
+    if isinstance(to_crs, int) or isinstance(to_crs, str) and len(to_crs) < 6:
+        to_crs = Proj(f"epsg:{to_crs}")
+
     project = Transformer.from_proj(
-        Proj(f"epsg:{from_crs}"),  # source coordinate system
-        Proj(f"epsg:{to_crs}"),
+        from_crs,  # source coordinate system
+        to_crs,
         always_xy=always_xy,
     )
     return partial(transform_coords, project=project)
@@ -52,100 +173,3 @@ def transform_coords(x_y, project):
     for i in range(len(x_y)):
         x_y[i] = project.transform(x_y[i][0], x_y[i][1])
     return x_y
-
-
-def get_countries_json(name):
-    if check_if_country_in_repo(name):
-        url = f"https://raw.githubusercontent.com/georgique/world-geojson/main/countries/{
-            name}.json"
-        json = requests_get(url).json()
-        json["features"][0]["properties"]["crs"] = 4326
-        return json
-
-
-def check_if_country_in_repo(name):
-
-    country_set = set(['afghanistan', 'albania', 'algeria', 'andorra', 'angola',
-                    'antigua_and_barbuda', 'argentina', 'armenia', 'australia',
-                    'austria', 'azerbaijan', 'bahamas', 'bahrain', 'bangladesh',
-                    'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan',
-                    'bolivia', 'bosnia_and_herzegovina', 'botswana', 'brazil',
-                    'brunei', 'bulgaria', 'burkina_faso', 'burundi', 'cambodia',
-                    'cameroon', 'canada', 'cape_verde', 'central_african_republic',
-                    'chad', 'chile', 'china', 'colombia', 'comoros', 'congo',
-                    'cook_islands', 'costa_rica', 'croatia', 'cuba', 'cyprus',
-                    'czech', 'democratic_congo', 'denmark', 'djibouti', 'dominica',
-                    'dominican_republic', 'east_timor', 'ecuador', 'egypt',
-                    'el_salvador', 'equatorial_guinea', 'eritrea', 'estonia',
-                    'eswatini', 'ethiopia', 'fiji', 'finland', 'france', 'gabon',
-                    'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada',
-                    'guatemala', 'guinea', 'guinea_bissau', 'guyana', 'haiti',
-                    'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran',
-                    'iraq', 'ireland', 'israel', 'italy', 'ivory_coast', 'jamaica',
-                    'japan', 'jordan', 'kazakhstan', 'kenya', 'kiribati', 'kuwait',
-                    'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia',
-                    'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar',
-                    'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'marshall_islands',
-                    'mauritania', 'mauritius', 'mexico', 'micronesia', 'moldova', 'monaco',
-                    'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia',
-                    'nauru', 'nepal', 'netherlands', 'new_zealand', 'nicaragua', 'niger',
-                    'nigeria', 'niue', 'north_korea', 'north_macedonia', 'norway', 'oman',
-                    'pakistan', 'palau', 'palestine', 'panama', 'papua_new_guinea', 'paraguay',
-                    'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia',
-                    'rwanda', 'saint_kitts_and_nevis', 'saint_lucia', 'saint_vincent_and_the_grenadines',
-                    'samoa', 'san_marino', 'sao_tome_and_principe', 'saudi_arabia', 'senegal',
-                    'serbia', 'seychelles', 'sierra_leone', 'singapore', 'slovakia', 'slovenia',
-                    'solomon_islands', 'somalia', 'south_africa', 'south_korea', 'south_sudan',
-                    'spain', 'sri_lanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria',
-                    'tajikistan', 'tanzania', 'thailand', 'togo', 'tonga', 'trinidad_and_tobago',
-                    'tunisia', 'turkey', 'turkmenistan', 'tuvalu', 'uganda', 'ukraine',
-                    'united_arab_emirates', 'united_kingdom', 'uruguay', 'usa', 'uzbekistan',
-                    'vanuatu', 'vatican', 'venezuela', 'vietnam', 'western_sahara', 'yemen',
-                    'zambia', 'zimbabwe'])
-    if name.lower() in country_set:
-        return True
-    else:
-        owner = "georgique"  # GitHub username or organization
-        repo = "world-geojson"  # Repository name
-        # Path within the repository (use an empty string if listing the root)
-        path = "countries"
-        # Branch name (e.g., 'main', 'master', or other branches)
-        branch = "main"
-
-        url = f"https://api.github.com/repos/{owner}/{
-            repo}/contents/{path}?ref={branch}"
-
-        # Make a GET request to the GitHub API
-        response = requests_get(url)
-
-        # Check if the request was successful
-        if response.status_code == 200:
-            contents = response.json()
-            # List all filenames
-            filenames = [
-                item["name"].split(".")[0]
-                for item in contents
-                if item["type"] == "file"
-            ]
-            if name.lower() in filenames:
-                return True
-        else:
-            print(f"Failed to retrieve data: {response.status_code}")
-
-        possible_matches = [
-            country for country in country_set if country.startswith(name[0])
-        ]
-        print(
-            f"Country {name} not found in the repository, maybe you meant one of these: {
-            possible_matches}"
-        )
-        return None
-
-
-
-def pickled_items_to_json(pickled_items, json_file):
-    stac_json = []
-    for item in pickled_items:
-        stac_json.append(item.to_dict())
-    json_dict = {'type': 'FeatureCollection', 'features': stac_json}    
-    json.dump(json_dict, open(json_file, 'w'))

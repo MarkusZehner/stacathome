@@ -1,49 +1,127 @@
-from urllib.request import urlretrieve
-from os import makedirs, remove as os_remove
-from os import path as os_path
+import os
+import time
 
-from dask.distributed import fire_and_forget
-from planetary_computer import sign as pc_sign
+from urllib.request import urlretrieve
+from concurrent.futures import ThreadPoolExecutor
+import zarr
+import planetary_computer as pc
+from odc.stac import load
+from rasterio.errors import RasterioIOError, WarpOperationError
+from shapely import box, transform
+
+from .asset_specs import get_attributes, get_resampling_per_band, supported_mspc_collections
+from .utils import filter_items_to_data_coverage, get_transform, run_with_multiprocessing
+
+
+def download_request_from_probe(probe_request, sel_bands, workdir):
+    for collection_name in supported_mspc_collections().keys():
+        if collection_name in probe_request and collection_name in sel_bands:
+            loc_name, item_collections, request_box = probe_request[collection_name]
+            out_path = os.path.join(workdir, loc_name + collection_name + '_')
+            bands = sel_bands[collection_name]
+            get_cube_part(
+                item_collections,
+                collection=collection_name,
+                request_geobox=request_box,
+                selected_bands=bands,
+                out_dir=out_path,
+            )
+
+
+def get_cube_part(items, collection, request_geobox, selected_bands, out_dir, asset_bin_size=50):
+    selected_bands = set(selected_bands) & set(get_attributes(collection)['data_attrs']['Band'])
+
+    crs = int(str(request_geobox.crs).split(':')[-1])
+    transformed_box = transform(box(*request_geobox.boundingbox), get_transform(crs, 4326))
+    items = filter_items_to_data_coverage(items, transformed_box, sensor=collection)
+
+    s2_attributes = get_attributes(collection)['data_attrs']
+    _s2_dytpes = dict(zip(s2_attributes["Band"], s2_attributes["Data Type"]))
+    if collection == 'sentinel-2-l2a':
+        resampling = get_resampling_per_band(
+            abs(int(request_geobox.resolution.x)), bands=selected_bands, collection=collection
+        )
+    else:
+        resampling = "nearest"
+
+    # subset items if asset_bin_size is not None
+    if asset_bin_size is not None and len(items) > asset_bin_size:
+        items = [items[i : i + asset_bin_size] for i in range(0, len(items), asset_bin_size)]
+        for asset_bin_nr, item_list in enumerate(items):
+            out_dir_ = out_dir + f"asset_bin_{str(asset_bin_nr * asset_bin_size).zfill(4)}.zarr.zip"
+            if os.path.exists(out_dir_):
+                print(f"Asset bin {asset_bin_nr} already exists, skipping")
+                continue
+            run_with_multiprocessing(
+                save_stac_to_zarr_zip,
+                items=item_list,
+                bands=selected_bands,
+                dtype=_s2_dytpes,
+                out_path=out_dir_,
+                geobox=request_geobox,
+                resampling=resampling,
+            )
+    else:
+        out_dir_ = out_dir + "all_assets.zarr.zip"
+        if os.path.exists(out_dir_):
+            print("Asset already exists, skipping")
+            return
+        run_with_multiprocessing(
+            save_stac_to_zarr_zip,
+            items=items,
+            bands=selected_bands,
+            dtype=_s2_dytpes,
+            out_path=out_dir_,
+            geobox=request_geobox,
+            resampling=resampling,
+        )
+
+
+def save_stac_to_zarr_zip(items, out_path, bands, dtype, geobox=None, boundingbox=None, resampling="nearest"):
+    parameters = {
+        "items": items,
+        "patch_url": pc.sign,
+        "bands": bands,
+        "dtype": dtype,
+        # 'chunks': {"time": -1, "x": -1, "y": -1},
+        "groupby": "solar_day",
+        "resampling": resampling,
+        "fail_on_error": True,
+    }
+    if geobox:
+        parameters["geobox"] = geobox
+    if boundingbox:
+        parameters["bbox"] = boundingbox
+
+    for i in range(5):
+        try:
+            data = load(**parameters).compute()
+            break
+        except (WarpOperationError, RasterioIOError):
+            print(f"Error creating Zarr: retry {i}", flush=True)
+            time.sleep(5)
+
+    store = zarr.ZipStore(out_path, mode="x")
+    data.to_zarr(store, mode="w-")
+    store.close()
+
 
 def get_asset(href, save_path):
-    makedirs(os_path.dirname(save_path), exist_ok=True)
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    if os.path.exists(save_path):
+        return
     try:
-        urlretrieve(pc_sign(href), save_path)
+        urlretrieve(pc.sign(href), save_path)
     except (KeyboardInterrupt, SystemExit):
-        if os_path.exists(save_path):
+        if os.path.exists(save_path):
             try:
-                os_remove(save_path)
+                os.remove(save_path)
             except Exception as e:
                 print(f"Error during cleanup of file {save_path}:", e)
     except Exception as e:
         print(f"Error downloading {href}:", e)
-    return None
 
 
-
-def download_item(item):
-    if isinstance(item, tuple):
-        get_asset(*item)
-    if isinstance(item, list):
-        for i in item:
-            get_asset(*i)
-    return None
-
-
-def parallel_download(items, client):
-    """
-    Download items in parallel.
-
-    Parameters
-    ----------
-    items: list
-        The items to download.
-    """
-    do = []
-    for i in items:
-        do.append(client.submit(download_item, i))
-        # do.append(dask.delayed(download_item)(i))
-    # downloads = db.from_sequence(items).map(download_item)
-    fire_and_forget(do)
-    # dask.compute(*do)
-    return None
+def download_assets_parallel(asset_list, max_workers=4):
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(lambda args: get_asset(*args), asset_list)
