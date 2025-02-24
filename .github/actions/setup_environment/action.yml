@@ -1,0 +1,19 @@
+name: Setup CI Environment
+inputs:
+  python-version:
+    default: "3.11"
+    type: string
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install CI Dependencies
+      shell: bash
+      run: |
+        pip install -r ci_requirements.txt
+        echo "/home/runner/.local/bin" >> $GITHUB_PATH

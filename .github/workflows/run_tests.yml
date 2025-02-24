@@ -1,0 +1,51 @@
+name: Run Tests
+on:
+  push:
+    branches:
+      - develop
+    tags:  # ignores tag pushes
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - "3.11"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup_environment
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Install Project
+        run: |
+          pip install .
+
+      - name: Run tests & coverage
+        run: |
+          coverage run -m pytest --no-header -v test
+          coverage report -m -i
+          coverage html -i
+
+      - name: Archive coverage results
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: htmlcov

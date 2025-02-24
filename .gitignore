@@ -20,6 +20,7 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -68,6 +69,8 @@ instance/
 # Scrapy stuff:
 .scrapy
 
+# Sphinx Build
+/doc/_build
 # Sphinx documentation
 docs/_build/
 
