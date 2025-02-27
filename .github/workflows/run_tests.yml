@@ -24,6 +24,28 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install GDAL (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y gdal-bin libgdal-dev
+          gdal-config --version  # Verify installation
+
+      - name: Install GDAL (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install gdal
+          gdal-config --version  # Verify installation
+
+      - name: Install GDAL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install gdal
+          echo "C:\Program Files\GDAL" >> $GITHUB_PATH  # Ensure GDAL is in PATH
+          echo "GDAL_DATA=C:\Program Files\GDAL\gdal-data" >> $GITHUB_ENV
+          echo "PROJ_LIB=C:\Program Files\GDAL\projlib" >> $GITHUB_ENV
+          gdalinfo --version  # Verify installation
+
       - name: Setup Environment
         uses: ./.github/actions/setup_environment
         with:
