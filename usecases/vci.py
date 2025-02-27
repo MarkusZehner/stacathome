@@ -1,21 +1,20 @@
-import os
 import json
+import os
 import time
 from datetime import datetime
 
+import numba as nb
 import numpy as np
 import xarray as xr
-from scipy.interpolate import PchipInterpolator
-from scipy.spatial import cKDTree
-from numpy.linalg import LinAlgError, pinv, solve
-from pyproj import CRS, Transformer
 from numba import njit, prange
-import numba as nb
-from pystac import Item
+from numpy.linalg import LinAlgError, pinv, solve
 from odc.geo.geobox import GeoBox
 from odc.stac import load
-
-from stacathome.asset_specs import get_attributes, get_resampling_per_band, get_band_attributes_s2
+from pyproj import CRS, Transformer
+from pystac import Item
+from scipy.interpolate import PchipInterpolator
+from scipy.spatial import cKDTree
+from stacathome.asset_specs import get_attributes, get_band_attributes_s2, get_resampling_per_band
 
 
 def find_nearest_indices(high_res_coords, low_res_coords):
@@ -26,7 +25,6 @@ def find_nearest_indices(high_res_coords, low_res_coords):
 
 
 def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range):
-
     dev_path = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test" if dev_path is None else dev_path
 
     os.makedirs(dev_path, exist_ok=True)
@@ -49,24 +47,29 @@ def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_si
 
     asset_keys = query[0].assets.keys()
     for q in range(len(query)):
-        query[q].assets = {k: replace_href(v, data_path) for k, v in query[q].assets.items()
-                           if (k in asset_keys and os.path.exists(os.path.join(data_path, v.href.split('/')[-1])))}
+        query[q].assets = {
+            k: replace_href(v, data_path)
+            for k, v in query[q].assets.items()
+            if (k in asset_keys and os.path.exists(os.path.join(data_path, v.href.split('/')[-1])))
+        }
 
     if time_range is not None:
-        query = [q for q in query if time_range[0] < q.properties['datetime'][:-17] and q.properties['datetime'][:-17] < time_range[1]]
+        query = [
+            q
+            for q in query
+            if time_range[0] < q.properties['datetime'][:-17] and q.properties['datetime'][:-17] < time_range[1]
+        ]
 
     bbox = query[0].assets['B02'].extra_fields['proj:bbox']
     crs = query[0].properties['proj:epsg']
     request_geobox = GeoBox.from_bbox(bbox, CRS.from_epsg(crs), resolution=10)
 
-    request_geobox_sub = request_geobox[i_y * c_size:i_y * c_size + c_size, i_x * c_size:i_x * c_size + 512]
+    request_geobox_sub = request_geobox[i_y * c_size : i_y * c_size + c_size, i_x * c_size : i_x * c_size + 512]
 
     s2_attributes = get_attributes(collection)['data_attrs']
     _s2_dytpes = dict(zip(s2_attributes["Band"], s2_attributes["Data Type"]))
 
-    resampling = get_resampling_per_band(
-        abs(int(request_geobox.resolution.x)), bands=bands, collection=collection
-    )
+    resampling = get_resampling_per_band(abs(int(request_geobox.resolution.x)), bands=bands, collection=collection)
 
     otf_cube = load(
         query,
@@ -91,7 +94,7 @@ def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_si
 
 def harmonize_bands(B02, B03, B04, B08, SCL, Time):
     # Convert to float to avoid integer casting issues
-    B02, B03, B04, B08 = [band.astype(np.float32) for band in [B02, B03, B04, B08]]
+    B02, B03, B04, B08 = (band.astype(np.float32) for band in [B02, B03, B04, B08])
     Time = Time.copy()
 
     threshold_date = np.datetime64('2022-01-25T00:00:00')
@@ -103,13 +106,13 @@ def harmonize_bands(B02, B03, B04, B08, SCL, Time):
         band[basline_mask] -= offset
         band /= 10000.0  # Ensure floating point division
 
-    B02, B03, B04, B08 = [np.where(scl_mask, band, np.nan) for band in [B02, B03, B04, B08]]
+    B02, B03, B04, B08 = (np.where(scl_mask, band, np.nan) for band in [B02, B03, B04, B08])
 
     return B02, B03, B04, B08, Time.astype('datetime64[D]')
 
 
 def compute_ndvi(B02, B03, B04, B08):
-    extra = (2 * B02 - 0.95 * B03 - 0.05)
+    extra = 2 * B02 - 0.95 * B03 - 0.05
     ndvi = (B08 - B04) / (B08 + B04).clip(1e-8, None)
     return np.where(extra <= 0, ndvi, np.nan)
 
@@ -207,9 +210,11 @@ def vci_3m_weekly(B02, B03, B04, B08, SCL, Time):
 
 def get_vci3m_weekly(dataset):
     offset = calculate_offset(dataset.time.values[0])
-    t_ax = np.arange(dataset.time.values[0].astype("datetime64[D]") + np.timedelta64(offset - 1, 'D'),
-                     dataset.time.values[-1].astype("datetime64[D]"),
-                     np.timedelta64(1, "D")).astype("datetime64[ns]")[::7]
+    t_ax = np.arange(
+        dataset.time.values[0].astype("datetime64[D]") + np.timedelta64(offset - 1, 'D'),
+        dataset.time.values[-1].astype("datetime64[D]"),
+        np.timedelta64(1, "D"),
+    ).astype("datetime64[ns]")[::7]
 
     result = xr.apply_ufunc(
         vci_3m_weekly,
@@ -219,8 +224,7 @@ def get_vci3m_weekly(dataset):
         dataset.B08,
         dataset.SCL,
         dataset.time,
-        input_core_dims=[['time'], ['time'], ['time'],
-                         ['time'], ['time'], ['time']],
+        input_core_dims=[['time'], ['time'], ['time'], ['time'], ['time'], ['time']],
         output_core_dims=[['weeks']],
         dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
         dask='parallelized',
@@ -330,9 +334,9 @@ def add_shift_values_nb(X: np.ndarray, shifts: np.array, buffer: int) -> np.ndar
 
         end_shift = start_shift + (m - 2 * buffer)
 
-        out[buffer:-buffer, i * n: (i + 1) * n] = X_buf[start_shift:end_shift, :]
+        out[buffer:-buffer, i * n : (i + 1) * n] = X_buf[start_shift:end_shift, :]
 
-    return out[buffer * 2: -buffer * 2]
+    return out[buffer * 2 : -buffer * 2]
 
 
 @nb.jit(nopython=True)
@@ -380,8 +384,8 @@ def moving_ols_slope_predict_baseline(X: np.ndarray, y: np.ndarray, window: int)
     """
     out = np.zeros((X.shape[0] - (window), y.shape[1]))
     for i in nb.prange(0, len(X) - window):
-        X_window = X[i: i + window].copy()
-        y_window = y[i: i + window].copy()
+        X_window = X[i : i + window].copy()
+        y_window = y[i : i + window].copy()
         last = X[i + window].copy()
         # get slope by inversion, switch to pinv(slower) if det == 0
         XTX = X_window.T @ X_window
@@ -420,7 +424,7 @@ def movinglinreg(X, y, window, prep=None):
     XV = X1[:-n_out, :window]  # Exclude y for initial R
     YV = X1[-n_out:, :window]  # Extract all y values
     R[:nv, :nv] = XV @ XV.T  # In-place matrix multiplication
-    R[:nv, nv:nv + n_out] = XV @ YV.T  # Cross terms
+    R[:nv, nv : nv + n_out] = XV @ YV.T  # Cross terms
 
     predictions = np.full((n_out, nt), np.nan)
 
@@ -429,7 +433,7 @@ def movinglinreg(X, y, window, prep=None):
         np.copyto(SR, R)
 
         # Correct RY indexing to pull y cross terms
-        np.copyto(RY, SR[:nv, nv:nv + n_out])
+        np.copyto(RY, SR[:nv, nv : nv + n_out])
         np.copyto(LUR, SR[:nv, :nv])
 
         # Estimate coefficients using inv or pinv
@@ -452,10 +456,10 @@ def movinglinreg(X, y, window, prep=None):
             # Update cross terms with y
             next_y = X1[-n_out:, i].reshape(-1, 1)
             last_y = X1[-n_out:, i - window].reshape(-1, 1)
-            R[:nv, nv:nv + n_out] += nextval @ next_y.T
-            R[:nv, nv:nv + n_out] -= lastval @ last_y.T
+            R[:nv, nv : nv + n_out] += nextval @ next_y.T
+            R[:nv, nv : nv + n_out] -= lastval @ last_y.T
 
-    return predictions.T[1: -(window - 1)]
+    return predictions.T[1 : -(window - 1)]
 
 
 def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, predict_on):
@@ -508,9 +512,7 @@ def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, pred
         # out[window:] = moving_ols_slope_predict_baseline(
         #    Xy_[:, shifts_backwards], Xy_[:, predict_on], window
         # )
-        out[window:] = movinglinreg(Xy_[:, shifts_backwards].T,
-                                    Xy_[:, predict_on].T,
-                                    window)
+        out[window:] = movinglinreg(Xy_[:, shifts_backwards].T, Xy_[:, predict_on].T, window)
         buffer_nan = np.array([False]).repeat(buffer)
         pad_remove_nan = np.concatenate((buffer_nan, remove_nan, buffer_nan))
         return_arr[pad_remove_nan] = out
@@ -566,30 +568,23 @@ if __name__ == '__main__':
 
     temp_offset_era5 = calculate_offset(era5.time.values[0])
 
-    cube = load_subset_otf_from_tiffs(dev_path=None, bands=None, collection=None, tile=None, i_y=i_y, i_x=i_x, c_size=None, time_range=['2016-01-01', '2024-12-31'])
+    cube = load_subset_otf_from_tiffs(
+        dev_path=None,
+        bands=None,
+        collection=None,
+        tile=None,
+        i_y=i_y,
+        i_x=i_x,
+        c_size=None,
+        time_range=['2016-01-01', '2024-12-31'],
+    )
 
     transformer = Transformer.from_crs(4326, cube.spatial_ref.attrs['crs_wkt'], always_xy=True)
 
-    points_lr = [
-        (transformer.transform(y, x))
-        for x in era5.lat.values
-        for y in era5.lon.values
-    ]
-    points_lr_back = [
-        (y, x)
-        for x in era5.lat.values
-        for y in era5.lon.values
-    ]
-    points_hr = [
-        (y, x)
-        for x in cube.x.values
-        for y in cube.y.values
-    ]
-    era5_index = [
-        points_lr_back[i]
-        for i in
-        find_nearest_indices(points_hr, points_lr)
-    ]
+    points_lr = [(transformer.transform(y, x)) for x in era5.lat.values for y in era5.lon.values]
+    points_lr_back = [(y, x) for x in era5.lat.values for y in era5.lon.values]
+    points_hr = [(y, x) for x in cube.x.values for y in cube.y.values]
+    era5_index = [points_lr_back[i] for i in find_nearest_indices(points_hr, points_lr)]
 
     vci_3m_path = f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_{i_y}_{i_x}.zarr'
 
@@ -642,10 +637,11 @@ if __name__ == '__main__':
             'buffer': buffer,
             'shifts_backwards': shifts_backwards,
             'predict_on': predict_on,
-        }
+        },
     ).to_zarr(
         f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/subset_chunk_coords_{i_y}_{i_x}.zarr',
-        compute=True, mode='w'
+        compute=True,
+        mode='w',
     )
     print('Finished at', time.ctime(), flush=True)
     print(f'elapsed time: {time.perf_counter() - t:.2f}', flush=True)
