@@ -2,6 +2,8 @@ import json
 import os
 import time
 from datetime import datetime
+import warnings
+import sys
 
 import numba as nb
 import numpy as np
@@ -14,6 +16,9 @@ from pyproj import CRS, Transformer
 from pystac import Item
 from scipy.interpolate import PchipInterpolator
 from scipy.spatial import cKDTree
+
+notebook_dir = "/Net/Groups/BGI/scratch/mzehner/code/stacathome/"
+sys.path.append(notebook_dir)
 from stacathome.asset_specs import get_attributes, get_band_attributes_s2, get_resampling_per_band
 
 
@@ -24,7 +29,7 @@ def find_nearest_indices(high_res_coords, low_res_coords):
     return indices
 
 
-def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range):
+def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range, return_box=False):
     dev_path = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test" if dev_path is None else dev_path
 
     os.makedirs(dev_path, exist_ok=True)
@@ -89,6 +94,8 @@ def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_si
         if band == 'SCL':
             otf_cube['SCL'].attrs = attributes['SCL']
 
+    if return_box:
+        return otf_cube, request_geobox_sub
     return otf_cube
 
 
@@ -108,17 +115,52 @@ def harmonize_bands(B02, B03, B04, B08, SCL, Time):
 
     B02, B03, B04, B08 = (np.where(scl_mask, band, np.nan) for band in [B02, B03, B04, B08])
 
-    return B02, B03, B04, B08, Time.astype('datetime64[D]')
-
-
-def compute_ndvi(B02, B03, B04, B08):
     extra = 2 * B02 - 0.95 * B03 - 0.05
+    B04, B08 = (np.where(extra <= 0, band, np.nan) for band in [B04, B08])
+
+    return B04, B08, Time.astype('datetime64[D]')
+
+
+def compute_ndvi(B04, B08):
     ndvi = (B08 - B04) / (B08 + B04).clip(1e-8, None)
-    return np.where(extra <= 0, ndvi, np.nan)
+    return ndvi
 
 
-def interpolate_ndvi(ndvi, Time):
-    date_range = np.arange(Time[0], Time[-1] + np.timedelta64(1, "D"), np.timedelta64(1, "D"))
+def resample_weekly_custom_daterange(da, Time, time_range, t_delta=(7, "D")):
+    out = np.full(time_range.shape, np.nan)
+    for i, date in enumerate(time_range):
+        mask = (Time >= date) & (Time < date + np.timedelta64(*t_delta))
+        if np.any(mask):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                out[i] = np.nanmean(da[mask])
+    return out
+
+
+def weekly_ndvi(ndvi, Time, t_delta=(7, "D")):
+    date_range = define_time_range(Time)
+    ndvi_weekly_values = np.full(date_range.shape, np.nan)
+
+    for i, date in enumerate(date_range):
+        mask = (Time >= date) & (Time < date + np.timedelta64(*t_delta))
+        if np.any(mask):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                ndvi_weekly_values[i] = np.nanmax(ndvi[mask])
+
+    valid_mask = ~np.isnan(ndvi_weekly_values)
+    if np.sum(valid_mask) >= ndvi_weekly_values.shape[0] / 10:
+        pchip_interpolator = PchipInterpolator(date_range[valid_mask].astype(float),
+                                               ndvi_weekly_values[valid_mask], extrapolate=False)
+        ndvi_pchip_values = pchip_interpolator(date_range.astype(float))
+    else:
+        ndvi_pchip_values = np.full_like(ndvi_weekly_values, np.nan)
+
+    return date_range + np.timedelta64(t_delta[0] - 1, t_delta[1]), ndvi_pchip_values
+
+
+def daily_ndvi(ndvi, Time, start_day="2016-01-01"):
+    date_range = np.arange(np.datetime64(start_day), Time[-1] + np.timedelta64(1, "D"), np.timedelta64(1, "D"))
     ndvi_daily_values = np.full(date_range.shape, np.nan)
     unique_time, unique_indices = np.unique(Time, return_index=True)
     indices = np.searchsorted(date_range, unique_time)
@@ -126,7 +168,8 @@ def interpolate_ndvi(ndvi, Time):
 
     valid_mask = ~np.isnan(ndvi_daily_values)
     if np.any(valid_mask):
-        pchip_interpolator = PchipInterpolator(date_range[valid_mask].astype(float), ndvi_daily_values[valid_mask])
+        pchip_interpolator = PchipInterpolator(date_range[valid_mask].astype(float),
+                                               ndvi_daily_values[valid_mask], extrapolate=False)
         ndvi_pchip_values = pchip_interpolator(date_range.astype(float))
     else:
         ndvi_pchip_values = np.full_like(ndvi_daily_values, np.nan)
@@ -151,8 +194,80 @@ def compute_ndvi_min_max(ndvi_values, day_of_year):
     return ndvi_min, ndvi_max
 
 
-def compute_vci(ndvi_pchip_values, date_range):
-    day_of_year = ((date_range - np.datetime64("2016-01-01")) % np.timedelta64(365, "D")).astype(int)
+@njit(parallel=True)
+def compute_ndvi_min_max_smoothed(ndvi_values, doy_index, window_size=12):
+    len_ar = np.unique(doy_index).shape[0]  # Number of unique DOY values
+    ndvi_min = np.full(len_ar, np.nan, dtype=np.float32)
+    ndvi_max = np.full(len_ar, np.nan, dtype=np.float32)
+
+    # Compute min/max NDVI per DOY
+    for i in prange(len_ar):
+        min_val = np.inf
+        max_val = -np.inf
+        for j in range(ndvi_values.shape[0]):  # Avoiding boolean masks for speed
+            if doy_index[j] == doy_index[i]:
+                val = ndvi_values[j]
+                if not np.isnan(val):
+                    if val < min_val:
+                        min_val = val
+                    if val > max_val:
+                        max_val = val
+
+        if min_val != np.inf:
+            ndvi_min[i] = min_val
+        if max_val != -np.inf:
+            ndvi_max[i] = max_val
+
+    # Apply a circular (rolling) smoothing filter
+    ndvi_min_smoothed = np.full(len_ar, np.nan, dtype=np.float32)
+    ndvi_max_smoothed = np.full(len_ar, np.nan, dtype=np.float32)
+
+    for doy in prange(len_ar):
+        # Define the rolling window with wrap-around
+        start = doy - window_size // 2
+        end = doy + window_size // 2 + 1
+        indices = (np.arange(start, end) % len_ar).astype(np.int32)
+
+        # Compute mean, ignoring NaNs
+        sum_min, count_min = 0.0, 0
+        sum_max, count_max = 0.0, 0
+
+        for idx in indices:
+            if not np.isnan(ndvi_min[idx]):
+                sum_min += ndvi_min[idx]
+                count_min += 1
+            if not np.isnan(ndvi_max[idx]):
+                sum_max += ndvi_max[idx]
+                count_max += 1
+
+        if count_min > 0:
+            ndvi_min_smoothed[doy] = sum_min / count_min
+        if count_max > 0:
+            ndvi_max_smoothed[doy] = sum_max / count_max
+
+    return ndvi_min_smoothed, ndvi_max_smoothed
+
+
+def compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=12):
+    # Convert dates to day of the year
+    doy_index = date_range.astype('datetime64[D]') - date_range.astype('datetime64[Y]') + 1
+    # fix overlapping into new year
+    doy_index[doy_index < 7] = 371
+
+    # Compute min/max NDVI based on 7-day intervals
+    ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(ndvi_pchip_values,
+                                                       doy_index,
+                                                       window_size=smooth_window_extremes)
+
+    # Apply VCI calculation
+    temp_ndvi_min = ndvi_min[(doy_index.astype(int) - 1) // 7]
+    temp_ndvi_max = ndvi_max[(doy_index.astype(int) - 1) // 7]
+
+    return (ndvi_pchip_values - temp_ndvi_min) / (temp_ndvi_max - temp_ndvi_min).clip(0.01, None)
+
+
+def compute_vci_doy(ndvi_pchip_values, date_range, start_day="2016-01-01"):
+    day_of_year = ((date_range - np.datetime64(start_day)) % np.timedelta64(365, "D")).astype(int)
     ndvi_min, ndvi_max = compute_ndvi_min_max(ndvi_pchip_values, day_of_year)
     temp_ndvi_min = ndvi_min[day_of_year]
     temp_ndvi_max = ndvi_max[day_of_year]
@@ -196,34 +311,44 @@ def calculate_offset(start_date, step=7):
     return offset
 
 
-def vci_3m_weekly(B02, B03, B04, B08, SCL, Time):
-    B02, B03, B04, B08, Time = harmonize_bands(B02, B03, B04, B08, SCL, Time)
-    ndvi = compute_ndvi(B02, B03, B04, B08)
-    date_range, ndvi_pchip_values = interpolate_ndvi(ndvi, Time)
-    vci = compute_vci(ndvi_pchip_values, date_range)
-    vci3m = rolling_mean(vci, 90)
-    offset = calculate_offset(Time[0])
-    weekly_vci3m = weekly_mean(vci3m, offset=offset)
+def vci_weekly(B02, B03, B04, B08, SCL, Time, smooth_window_extremes=12):
+    B04, B08, Time = harmonize_bands(B02, B03, B04, B08, SCL, Time)
+    ndvi = compute_ndvi(B04, B08)
+    date_range, ndvi_pchip_values = weekly_ndvi(ndvi, Time)
+    vci = compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=smooth_window_extremes)
+    vci3m = rolling_mean(vci, 12)
+    # offset = calculate_offset(Time[0])
+    # weekly_vci3m = weekly_mean(vci3m, offset=0)
 
-    return weekly_vci3m
+    return vci3m
 
 
-def get_vci3m_weekly(dataset):
-    offset = calculate_offset(dataset.time.values[0])
-    t_ax = np.arange(
-        dataset.time.values[0].astype("datetime64[D]") + np.timedelta64(offset - 1, 'D'),
-        dataset.time.values[-1].astype("datetime64[D]"),
-        np.timedelta64(1, "D"),
-    ).astype("datetime64[ns]")[::7]
+def define_time_range(Time):
+    start_years = np.unique(Time.astype('datetime64[Y]'))
+    date_range = np.concatenate([
+        np.arange(year,
+                  # year + np.timedelta64(366 if (year.astype(int) % 4 == 0 and (year.astype(int) % 100 != 0 or year.astype(int) % 400 == 0)) else 365, "D"),
+                  year + np.timedelta64(365 - 7, "D"),
+                  np.timedelta64(7, "D"))
+        for year in start_years
+    ])
+    return date_range
+
+
+def get_vci3m_weekly(dataset, smooth_window_extremes=12):
+    t_ax = define_time_range(dataset.time.values).astype("datetime64[ns]") + np.timedelta64(6, "D")
 
     result = xr.apply_ufunc(
-        vci_3m_weekly,
+        vci_weekly,
         dataset.B02,
         dataset.B03,
         dataset.B04,
         dataset.B08,
         dataset.SCL,
         dataset.time,
+        kwargs={
+            'smooth_window_extremes': smooth_window_extremes,
+        },
         input_core_dims=[['time'], ['time'], ['time'], ['time'], ['time'], ['time']],
         output_core_dims=[['weeks']],
         dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
@@ -363,40 +488,40 @@ def __check_nan(X: np.ndarray) -> np.ndarray:
     return out
 
 
-@nb.jit(nopython=True, parallel=True)
-def moving_ols_slope_predict_baseline(X: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
-    """
-    Calculate the moving OLS without intercept for a multivariate regression using numba.
+# @nb.jit(nopython=True, parallel=True)
+# def moving_ols_slope_predict_baseline(X: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
+#     """
+#     Calculate the moving OLS without intercept for a multivariate regression using numba.
 
-    Parameters
-    ----------
-    X : np.ndarray
-        The input data with shape (n_samples, n_features).
-    y : np.ndarray
-        The target data with shape (n_samples, n_targets).
-    window : int
-        The window size.
+#     Parameters
+#     ----------
+#     X : np.ndarray
+#         The input data with shape (n_samples, n_features).
+#     y : np.ndarray
+#         The target data with shape (n_samples, n_targets).
+#     window : int
+#         The window size.
 
-    Returns
-    -------
-    np.ndarray
-        The output predictions with shape (n_samples-window, n_targets).
-    """
-    out = np.zeros((X.shape[0] - (window), y.shape[1]))
-    for i in nb.prange(0, len(X) - window):
-        X_window = X[i : i + window].copy()
-        y_window = y[i : i + window].copy()
-        last = X[i + window].copy()
-        # get slope by inversion, switch to pinv(slower) if det == 0
-        XTX = X_window.T @ X_window
-        if np.linalg.det(XTX) == 0:
-            inv = np.linalg.pinv(XTX)
-        else:
-            inv = np.linalg.inv(XTX)
-        slope_coeff = inv @ (X_window.T @ y_window)
-        # multiply the last value in window of X with the slope to get the prediction
-        out[i] = slope_coeff.T @ last
-    return out
+#     Returns
+#     -------
+#     np.ndarray
+#         The output predictions with shape (n_samples-window, n_targets).
+#     """
+#     out = np.zeros((X.shape[0] - (window), y.shape[1]))
+#     for i in nb.prange(0, len(X) - window):
+#         X_window = X[i : i + window].copy()
+#         y_window = y[i : i + window].copy()
+#         last = X[i + window].copy()
+#         # get slope by inversion, switch to pinv(slower) if det == 0
+#         XTX = X_window.T @ X_window
+#         if np.linalg.det(XTX) == 0:
+#             inv = np.linalg.pinv(XTX)
+#         else:
+#             inv = np.linalg.inv(XTX)
+#         slope_coeff = inv @ (X_window.T @ y_window)
+#         # multiply the last value in window of X with the slope to get the prediction
+#         out[i] = slope_coeff.T @ last
+#     return out
 
 
 def prepare_moving(X, y):
@@ -558,15 +683,18 @@ if __name__ == '__main__':
     import sys
 
     print('Starting at', time.ctime(), flush=True)
-    i_y = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-    i_x = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+    i_y = int(sys.argv[1]) if len(sys.argv) > 1 else 9
+    i_x = int(sys.argv[2]) if len(sys.argv) > 2 else 13
     t = time.perf_counter()
 
     print('Loading data at', time.ctime(), flush=True)
     era5_vars = ["pev", "t2m", "tp", "swvl1"]
     era5 = xr.open_zarr("/Net/Groups/BGI/tscratch/vbenson/EarthNet/droughtearthnet/data/Somalia/era5_0d25.zarr")
 
-    temp_offset_era5 = calculate_offset(era5.time.values[0])
+    # temp_offset_era5 = calculate_offset(era5.time.values[0])
+
+    start_date = '2016-01-01'
+    end_date = '2023-12-31'
 
     cube = load_subset_otf_from_tiffs(
         dev_path=None,
@@ -576,8 +704,9 @@ if __name__ == '__main__':
         i_y=i_y,
         i_x=i_x,
         c_size=None,
-        time_range=['2016-01-01', '2024-12-31'],
+        time_range=[start_date, end_date],
     )
+    print(cube.time.values[0], cube.time.values[-1], flush=True)
 
     transformer = Transformer.from_crs(4326, cube.spatial_ref.attrs['crs_wkt'], always_xy=True)
 
@@ -585,6 +714,7 @@ if __name__ == '__main__':
     points_lr_back = [(y, x) for x in era5.lat.values for y in era5.lon.values]
     points_hr = [(y, x) for x in cube.x.values for y in cube.y.values]
     era5_index = [points_lr_back[i] for i in find_nearest_indices(points_hr, points_lr)]
+    # assert len(np.unique(era5_index, axis=0))
 
     vci_3m_path = f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_{i_y}_{i_x}.zarr'
 
@@ -600,21 +730,32 @@ if __name__ == '__main__':
 
     print('vci done')
 
+    print(weekly_vci3m.time.values[0], weekly_vci3m.time.values[-1], flush=True)
+
     weekly_era5 = (
-        era5.isel(time=slice(temp_offset_era5 + 7, None))
-        .resample(time="1W", origin='start_day')
-        .mean()
+        era5.sel(time=slice(start_date, end_date))
+        # .resample(time="1W", origin='start_day')
+        # .mean()
         .sel(lat=era5_index[0][0], lon=era5_index[0][1], method="nearest")[era5_vars]
         .drop_vars(["lat", "lon"])
     ).load()
 
+    weather_np = weekly_era5.to_array(dim='variable').values
+
+    time_range = define_time_range(weekly_era5.time.values)
+    era5_resampled = np.zeros((weather_np.shape[0], time_range.shape[0]))
+
+    for i in range(weather_np.shape[0]):
+        era5_resampled[i] = resample_weekly_custom_daterange(weather_np[i, :], weekly_era5.time.values, time_range)
     weekly_vci3m = weekly_vci3m.sel(time=slice(weekly_era5.time.values[0], weekly_era5.time.values[-1]))
+
+    print(weekly_era5.time.values[0], weekly_era5.time.values[-1], flush=True)
+
     weekly_vci3m = weekly_vci3m.chunk(dict(time=-1, y='auto', x='auto'))
 
-    shifts = np.array([-6, -5, -4, -3, -2, -1, 0, 2, 4, 6, 8, 10, 12])
+    shifts = np.array([-6, -5, -4, -3, -2, -1, 0, 4, 6, 8, 10, 12])
     buffer = __get_buffer_shift(shifts)
-    weather_np = weekly_era5.to_array(dim='variable').values
-    in_dims = 1 + weather_np.shape[0]
+    in_dims = 1 + era5_resampled.shape[0]
     shifts_backwards, predict_on = __get_array_indicators_for_lin_reg(shifts, in_dims)
 
     window = 200
@@ -631,7 +772,7 @@ if __name__ == '__main__':
         output_dtypes=[np.float32],
         vectorize=True,
         kwargs={
-            'weather': weather_np,
+            'weather': era5_resampled,
             'window': window,
             'shifts': shifts,
             'buffer': buffer,
