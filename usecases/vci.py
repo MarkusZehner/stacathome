@@ -29,65 +29,72 @@ def find_nearest_indices(high_res_coords, low_res_coords):
     return indices
 
 
-def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range, return_box=False):
+def replace_href(values, local_path):
+    values.href = os.path.join(local_path, values.href.split('/')[-1])
+    return values
+
+
+def collect_local_items(dev_path, tile, time_range=None, replace_hrefs=True):
     dev_path = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test" if dev_path is None else dev_path
+    tile = '37NHE' if tile is None else tile
 
-    os.makedirs(dev_path, exist_ok=True)
-
-    t = '37NHE' if tile is None else tile
-    bands = ['B02', 'B03', 'B04', 'B08', 'SCL'] if bands is None else bands
-    collection = 'sentinel-2-l2a' if collection is None else collection
-    c_size = 512 if c_size is None else c_size
-
-    query_path = os.path.join(dev_path, t, 'sentinel-2-l2a_queries')
-    data_path = os.path.join(dev_path, t, 'sentinel-2-l2a_data')
-    os.listdir(query_path)
+    query_path = os.path.join(dev_path, tile, 'sentinel-2-l2a_queries')
+    data_path = os.path.join(dev_path, tile, 'sentinel-2-l2a_data')
+    os.makedirs(query_path, exist_ok=True)
+    os.makedirs(data_path, exist_ok=True)
     with open(os.path.join(query_path, os.listdir(query_path)[0])) as json_file:
         query_dict = json.load(json_file)
     query = [Item.from_dict(feature) for feature in query_dict["features"]]
 
-    def replace_href(values, local_path):
-        values.href = os.path.join(local_path, values.href.split('/')[-1])
-        return values
-
-    asset_keys = query[0].assets.keys()
-    for q in range(len(query)):
-        query[q].assets = {
-            k: replace_href(v, data_path)
-            for k, v in query[q].assets.items()
-            if (k in asset_keys and os.path.exists(os.path.join(data_path, v.href.split('/')[-1])))
-        }
-
+    if replace_hrefs:
+        asset_keys = query[0].assets.keys()
+        for q in range(len(query)):
+            query[q].assets = {
+                k: replace_href(v, data_path)
+                for k, v in query[q].assets.items()
+                if (k in asset_keys and os.path.exists(os.path.join(data_path, v.href.split('/')[-1])))
+            }
     if time_range is not None:
         query = [
             q
             for q in query
             if time_range[0] < q.properties['datetime'][:-17] and q.properties['datetime'][:-17] < time_range[1]
         ]
+    return query
+
+
+def load_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range, spat_res=10, subset=True, return_box=False):
+
+    collection = 'sentinel-2-l2a' if collection is None else collection
+    bands = ['B02', 'B03', 'B04', 'B08', 'SCL'] if bands is None else bands
+    c_size = 512 if c_size is None else c_size
+
+    query = collect_local_items(dev_path, tile, time_range)
 
     bbox = query[0].assets['B02'].extra_fields['proj:bbox']
     crs = query[0].properties['proj:epsg']
-    request_geobox = GeoBox.from_bbox(bbox, CRS.from_epsg(crs), resolution=10)
+    request_geobox = GeoBox.from_bbox(bbox, CRS.from_epsg(crs), resolution=spat_res)
 
-    request_geobox_sub = request_geobox[i_y * c_size : i_y * c_size + c_size, i_x * c_size : i_x * c_size + 512]
+    if subset:
+        request_geobox = request_geobox[i_y * c_size : i_y * c_size + c_size,
+                                        i_x * c_size : i_x * c_size + c_size]
 
-    s2_attributes = get_attributes(collection)['data_attrs']
-    _s2_dytpes = dict(zip(s2_attributes["Band"], s2_attributes["Data Type"]))
+    attributes = get_attributes(collection)
+    data_atts = attributes.pop("data_attrs")
+    _s2_dytpes = dict(zip(data_atts["Band"], data_atts["Data Type"]))
 
     resampling = get_resampling_per_band(abs(int(request_geobox.resolution.x)), bands=bands, collection=collection)
 
     otf_cube = load(
         query,
         bands=bands,
-        chunks={'time': -1, 'x': 512, 'y': 512},
-        geobox=request_geobox_sub,
+        chunks={'time': -1, 'x': -1, 'y': -1},
+        geobox=request_geobox,
         dtype=_s2_dytpes,
         resampling=resampling,
         groupby="solar_day",
     )
 
-    attributes = get_attributes(collection)
-    data_atts = attributes.pop("data_attrs")
     band_attrs = get_band_attributes_s2(data_atts, otf_cube.data_vars.keys())
     for band in band_attrs.keys():
         otf_cube[band].attrs = band_attrs[band]
@@ -95,7 +102,7 @@ def load_subset_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_si
             otf_cube['SCL'].attrs = attributes['SCL']
 
     if return_box:
-        return otf_cube, request_geobox_sub
+        return otf_cube, request_geobox
     return otf_cube
 
 
@@ -266,6 +273,28 @@ def compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=12)
     return (ndvi_pchip_values - temp_ndvi_min) / (temp_ndvi_max - temp_ndvi_min).clip(0.01, None)
 
 
+def compute_vci_weekly_from_weekly_ndvi(ndvi_weekly, date_range,
+                                        ndvi_min=None, ndvi_max=None,
+                                        return_extrema=False,
+                                        smooth_window_extremes=12):
+    doy_index = date_range.astype('datetime64[D]') - date_range.astype('datetime64[Y]') + 6
+    week_of_year = doy_index // 7
+    if ndvi_min is None and ndvi_max is None:
+        ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(
+            ndvi_weekly, week_of_year, smooth_window_extremes)
+
+        temp_ndvi_min = ndvi_min[week_of_year.astype(int)]
+        temp_ndvi_max = ndvi_max[week_of_year.astype(int)]
+    else:
+        temp_ndvi_min = ndvi_min
+        temp_ndvi_max = ndvi_max
+
+    vci = (ndvi_weekly - temp_ndvi_min) / (temp_ndvi_max - temp_ndvi_min).clip(0.01, None)
+    if return_extrema:
+        return np.stack((vci, temp_ndvi_min, temp_ndvi_max), axis=0)
+    return vci
+
+
 def compute_vci_doy(ndvi_pchip_values, date_range, start_day="2016-01-01"):
     day_of_year = ((date_range - np.datetime64(start_day)) % np.timedelta64(365, "D")).astype(int)
     ndvi_min, ndvi_max = compute_ndvi_min_max(ndvi_pchip_values, day_of_year)
@@ -311,16 +340,40 @@ def calculate_offset(start_date, step=7):
     return offset
 
 
-def vci_weekly(B02, B03, B04, B08, SCL, Time, smooth_window_extremes=12):
+def process_ndvi_weekly(B02, B03, B04, B08, SCL, Time, return_date_range=False):
     B04, B08, Time = harmonize_bands(B02, B03, B04, B08, SCL, Time)
     ndvi = compute_ndvi(B04, B08)
     date_range, ndvi_pchip_values = weekly_ndvi(ndvi, Time)
+    if return_date_range:
+        return date_range, ndvi_pchip_values
+    return ndvi_pchip_values
+
+
+def vci_3m(B02, B03, B04, B08, SCL, Time, smooth_window_extremes=12):
+    # B04, B08, Time = harmonize_bands(B02, B03, B04, B08, SCL, Time)
+    # ndvi = compute_ndvi(B04, B08)
+    # date_range, ndvi_pchip_values = weekly_ndvi(ndvi, Time)
+    date_range, ndvi_pchip_values = process_ndvi_weekly(
+        B02, B03, B04, B08, SCL, Time, return_date_range=False)
+
     vci = compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=smooth_window_extremes)
     vci3m = rolling_mean(vci, 12)
     # offset = calculate_offset(Time[0])
     # weekly_vci3m = weekly_mean(vci3m, offset=0)
 
     return vci3m
+
+
+def vci_3m_weekly_from_ndvi_weekly(ndvi_weekly, Time, ndvi_min=None, ndvi_max=None,
+                                   return_extrema=False, smooth_window_extremes=12):
+    date_range = define_time_range(Time)
+    vci = compute_vci_weekly_from_weekly_ndvi(ndvi_weekly, date_range,
+                                              ndvi_min=ndvi_min, ndvi_max=ndvi_max,
+                                              return_extrema=return_extrema,
+                                              smooth_window_extremes=smooth_window_extremes)
+    if return_extrema:
+        return np.stack((rolling_mean(vci[0], 12), vci[1], vci[2]), axis=0)
+    return rolling_mean(vci, 12)
 
 
 def define_time_range(Time):
@@ -335,11 +388,38 @@ def define_time_range(Time):
     return date_range
 
 
+def get_ndvi_weekly(dataset):
+    t_ax = define_time_range(dataset.time.values).astype("datetime64[ns]") + np.timedelta64(6, "D")
+
+    result = xr.apply_ufunc(
+        process_ndvi_weekly,
+        dataset.B02,
+        dataset.B03,
+        dataset.B04,
+        dataset.B08,
+        dataset.SCL,
+        dataset.time,
+        kwargs={
+            'return_date_range': False,
+        },
+        input_core_dims=[['time'], ['time'], ['time'], ['time'], ['time'], ['time']],
+        output_core_dims=[['weeks']],
+        dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
+        dask='parallelized',
+        output_dtypes=[np.float32],
+        vectorize=True,
+    )
+
+    result = result.assign_coords(weeks=t_ax)
+    result = result.rename({'weeks': 'time'})
+    return result.to_dataset(name='ndvi_weekly')
+
+
 def get_vci3m_weekly(dataset, smooth_window_extremes=12):
     t_ax = define_time_range(dataset.time.values).astype("datetime64[ns]") + np.timedelta64(6, "D")
 
     result = xr.apply_ufunc(
-        vci_weekly,
+        vci_3m,
         dataset.B02,
         dataset.B03,
         dataset.B04,
@@ -359,6 +439,61 @@ def get_vci3m_weekly(dataset, smooth_window_extremes=12):
 
     result = result.assign_coords(weeks=t_ax)
     result = result.rename({'weeks': 'time'})
+    return result.to_dataset(name='vci3m_weekly')
+
+
+def get_vci3m_weekly_from_ndvi_weekly(dataset,
+                                      return_extrema=False, smooth_window_extremes=12):
+    t_ax = define_time_range(dataset.time.values).astype("datetime64[ns]") + np.timedelta64(6, "D")
+    # here is something wrong with the time dim
+    if 'ndvi_min' in dataset and 'ndvi_max' in dataset:
+        input_core_dims = [['time']] * 4
+        result = xr.apply_ufunc(
+            vci_3m_weekly_from_ndvi_weekly,
+            dataset.ndvi_weekly,
+            dataset.time,
+            dataset.ndvi_min,
+            dataset.ndvi_max,
+            kwargs={
+                'return_extrema': return_extrema,
+                'smooth_window_extremes': smooth_window_extremes,
+            },
+            input_core_dims=input_core_dims,
+            output_core_dims=[['weeks']],
+            dask_gufunc_kwargs={'output_sizes': {
+                'weeks': len(t_ax)}},
+            dask='parallelized',
+            output_dtypes=[np.float32],
+            vectorize=True,
+        )
+    else:
+        input_core_dims = [['time']] * 2
+        result = xr.apply_ufunc(
+            vci_3m_weekly_from_ndvi_weekly,
+            dataset.ndvi_weekly,
+            dataset.time,
+            kwargs={
+                'ndvi_min': None,
+                'ndvi_max': None,
+                'return_extrema': return_extrema,
+                'smooth_window_extremes': smooth_window_extremes,
+            },
+            input_core_dims=input_core_dims,
+            output_core_dims=[['variables', 'weeks']],
+            dask_gufunc_kwargs={'output_sizes': {
+                'variables': 3 if return_extrema else 1,
+                'weeks': len(t_ax)}},
+            dask='parallelized',
+            output_dtypes=[np.float32],
+            vectorize=True,
+        )
+    # if return_extrema:
+    #     result, ndvi_min, ndvi_max = result
+
+    result = result.assign_coords(weeks=t_ax)
+    result = result.rename({'weeks': 'time'})
+    # if return_extrema:
+    #     return result.to_dataset(name='vci3m_weekly'), ndvi_min, ndvi_max
     return result.to_dataset(name='vci3m_weekly')
 
 
@@ -488,72 +623,78 @@ def __check_nan(X: np.ndarray) -> np.ndarray:
     return out
 
 
-# @nb.jit(nopython=True, parallel=True)
-# def moving_ols_slope_predict_baseline(X: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
-#     """
-#     Calculate the moving OLS without intercept for a multivariate regression using numba.
+@nb.jit(nopython=False, parallel=False)
+def moving_ols_slope_predict_baseline(X: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
+    """
+    Calculate the moving OLS without intercept for a multivariate regression using numba.
 
-#     Parameters
-#     ----------
-#     X : np.ndarray
-#         The input data with shape (n_samples, n_features).
-#     y : np.ndarray
-#         The target data with shape (n_samples, n_targets).
-#     window : int
-#         The window size.
+    Parameters
+    ----------
+    X : np.ndarray
+        The input data with shape (n_samples, n_features).
+    y : np.ndarray
+        The target data with shape (n_samples, n_targets).
+    window : int
+        The window size.
 
-#     Returns
-#     -------
-#     np.ndarray
-#         The output predictions with shape (n_samples-window, n_targets).
-#     """
-#     out = np.zeros((X.shape[0] - (window), y.shape[1]))
-#     for i in nb.prange(0, len(X) - window):
-#         X_window = X[i : i + window].copy()
-#         y_window = y[i : i + window].copy()
-#         last = X[i + window].copy()
-#         # get slope by inversion, switch to pinv(slower) if det == 0
-#         XTX = X_window.T @ X_window
-#         if np.linalg.det(XTX) == 0:
-#             inv = np.linalg.pinv(XTX)
-#         else:
-#             inv = np.linalg.inv(XTX)
-#         slope_coeff = inv @ (X_window.T @ y_window)
-#         # multiply the last value in window of X with the slope to get the prediction
-#         out[i] = slope_coeff.T @ last
-#     return out
+    Returns
+    -------
+    np.ndarray
+        The output predictions with shape (n_samples-window, n_targets).
+    """
+    out = np.zeros((X.shape[0] - (window), y.shape[1]))
+    for i in range(0, len(X) - window):
+        X_window = X[i : i + window].copy()
+        y_window = y[i : i + window].copy()
+        last = X[i + window].copy()
+        # get slope by inversion, switch to pinv(slower) if det == 0
+        XTX = X_window.T @ X_window
+
+        print('old', XTX)
+
+        if np.linalg.det(XTX) == 0:
+            inv = np.linalg.pinv(XTX)
+        else:
+            inv = np.linalg.inv(XTX)
+        slope_coeff = inv @ (X_window.T @ y_window)
+        # multiply the last value in window of X with the slope to get the prediction
+        out[i] = slope_coeff.T @ last
+    return out
 
 
 def prepare_moving(X, y):
-    nv, nt = X.shape  # X: (n_features, n_samples)
+    nv, _ = X.shape  # X: (n_features, n_samples)
     n_out = y.shape[0]  # Number of outputs
     X1 = np.vstack([X, y])  # Remove bias term for pure slope calculation
     R = np.zeros((nv + n_out, nv + n_out))
     SR = R.copy()
     LUR = np.zeros((nv, nv))  # Exclude bias term here
     RY = np.zeros((nv, n_out))  # Adjust for multiple outputs
-    outar = np.full((n_out, nt), np.nan)  # Adjust output shape
-    return X1, R, SR, LUR, RY, outar
+    # outar = np.full((n_out, nt), np.nan)  # Adjust output shape
+    return X1, R, SR, LUR, RY
 
 
-def movinglinreg(X, y, window, prep=None):
+def movinglinreg(Xt, yt, window, prep=None):
+    X = Xt.T
+    y = yt.T
     nv, nt = X.shape
     n_out = y.shape[0]  # Number of outputs
     if prep is None:
         prep = prepare_moving(X, y)
 
-    outoffset = -(window - 1)  # Align to predict at the end of the window
-    X1, R, SR, LUR, RY, outar = prep
+    # outoffset = -(window - 1)  # Align to predict at the end of the window
+    X1, R, SR, LUR, RY = prep
 
     # Initialize with the first window
     XV = X1[:-n_out, :window]  # Exclude y for initial R
     YV = X1[-n_out:, :window]  # Extract all y values
     R[:nv, :nv] = XV @ XV.T  # In-place matrix multiplication
     R[:nv, nv : nv + n_out] = XV @ YV.T  # Cross terms
+    print('new', R.T)
 
-    predictions = np.full((n_out, nt), np.nan)
+    predictions = np.full((n_out, nt - window), np.nan)
 
-    for i in range(window, nt + 1):
+    for i in range(window, nt):
         # Copy R into SR (symmetric matrix)
         np.copyto(SR, R)
 
@@ -569,7 +710,7 @@ def movinglinreg(X, y, window, prep=None):
 
         # Compute predicted y values using only the slopes
         x_current = X[:, i - 1]  # Use the last point in the current window
-        predictions[:, i + outoffset] = coeffs.T @ x_current
+        predictions[:, i - (1 + window)] = coeffs.T @ x_current
 
         # Update R in-place for the sliding window
         if i < nt:
@@ -583,8 +724,9 @@ def movinglinreg(X, y, window, prep=None):
             last_y = X1[-n_out:, i - window].reshape(-1, 1)
             R[:nv, nv : nv + n_out] += nextval @ next_y.T
             R[:nv, nv : nv + n_out] -= lastval @ last_y.T
+            print('new', R.T)
 
-    return predictions.T[1 : -(window - 1)]
+    return predictions.T
 
 
 def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, predict_on):
@@ -621,7 +763,12 @@ def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, pred
         The predicted values with shape (time, n_targets).
     """
     # Add satellite index (1, time) to the weather data (n_features, time)
-    combine = np.concatenate([data.reshape(1, -1), weather], axis=0).T
+    if weather is not None:
+        combine = np.concatenate([data.reshape(1, -1), weather], axis=0).T
+    else:
+        combine = np.concatenate([data.reshape(1, -1)], axis=0).T
+
+    print('combine', combine.shape)
 
     # data is shifted against itself for window of lagged input and prediction dates
     Xy = add_shift_values_nb(combine, shifts, buffer)
@@ -637,7 +784,7 @@ def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, pred
         # out[window:] = moving_ols_slope_predict_baseline(
         #    Xy_[:, shifts_backwards], Xy_[:, predict_on], window
         # )
-        out[window:] = movinglinreg(Xy_[:, shifts_backwards].T, Xy_[:, predict_on].T, window)
+        out[window:] = movinglinreg(Xy_[:, shifts_backwards], Xy_[:, predict_on], window)
         buffer_nan = np.array([False]).repeat(buffer)
         pad_remove_nan = np.concatenate((buffer_nan, remove_nan, buffer_nan))
         return_arr[pad_remove_nan] = out
@@ -645,17 +792,19 @@ def rolling_linreg(data, weather, window, shifts, buffer, shifts_backwards, pred
 
 
 if __name__ == '__main__':
-    # get data from MPC
+    # get data from MPC  --- low res ca be done one the fly without saving all tiffs!, see below
     # import argparse
-
     # from stacathome.request import request_data_by_tile
     # from stacathome.download import download_assets_parallel
+    # import planetary_computer as pc
 
     # tile = ['37NHE']
     # dev_path = "/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test"
     # bands = ['B02', 'B03', 'B04', 'B08', 'SCL']
+    # on_the_fly = True
+    # collection = 'sentinel-2-l2a'
 
-    # time_bins = ('2014-05-01', '2025-08-31')
+    # time_bins = ('2016-01-01', '2023-12-31')
 
     # to_process = []
     # for t in tile:
@@ -669,16 +818,37 @@ if __name__ == '__main__':
     #         end_time=time_bins[1],
     #         save_dir=query_path,
     #     )
-    #     for i in items:
-    #         for b in bands:
-    #             to_process.append((i.assets[b].href,
-    #                                os.path.join(data_path, i.assets[b].href.split('/')[-1])))
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--workers", type=int, default=int(os.getenv("SLURM_CPUS_PER_TASK", 4)), help="Number of workers")
-    # args = parser.parse_args()
-
-    # download_assets_parallel(to_process, max_workers=args.workers)
+    #     # skip this for on the fly!
+    #     if not on_the_fly:
+    #         for i in items:
+    #             for b in bands:
+    #                 to_process.append((i.assets[b].href,
+    #                                    os.path.join(data_path, i.assets[b].href.split('/')[-1])))
+    #     if on_the_fly:
+    #         # on the fly generation of low res cube:
+    #         # instead of iterating items and handing them over to download_assets_parallel
+    #         # takes 5 min ca for 1 tile
+    #         bbox = items[0].assets['B02'].extra_fields['proj:bbox']
+    #         crs = items[0].properties['proj:epsg']
+    #         request_geobox = GeoBox.from_bbox(bbox, CRS.from_epsg(crs), resolution=5600)
+    #         s2_attributes = get_attributes(collection)['data_attrs']
+    #         _s2_dytpes = dict(zip(s2_attributes["Band"], s2_attributes["Data Type"]))
+    #         resampling = get_resampling_per_band(abs(int(request_geobox.resolution.x)), bands=bands, collection=collection)
+    #         otf_cube = load(
+    #             items,
+    #             patch_url=pc.sign,
+    #             bands=bands,
+    #             chunks={'time': -1, 'x': -1, 'y': -1},
+    #             geobox=request_geobox,
+    #             dtype=_s2_dytpes,
+    #             resampling=resampling,
+    #             groupby="solar_day",
+    #         )
+    # if not on_the_fly:
+    #     parser = argparse.ArgumentParser()
+    #     parser.add_argument("--workers", type=int, default=int(os.getenv("SLURM_CPUS_PER_TASK", 4)), help="Number of workers")
+    #     args = parser.parse_args()
+    #     download_assets_parallel(to_process, max_workers=args.workers)
 
     import sys
 
@@ -687,16 +857,18 @@ if __name__ == '__main__':
     i_x = int(sys.argv[2]) if len(sys.argv) > 2 else 13
     t = time.perf_counter()
 
-    print('Loading data at', time.ctime(), flush=True)
-    era5_vars = ["pev", "t2m", "tp", "swvl1"]
-    era5 = xr.open_zarr("/Net/Groups/BGI/tscratch/vbenson/EarthNet/droughtearthnet/data/Somalia/era5_0d25.zarr")
+    add_weather = False
+    if add_weather:
+        print('Loading data at', time.ctime(), flush=True)
+        era5_vars = ["pev", "t2m", "tp", "swvl1"]
+        era5 = xr.open_zarr("/Net/Groups/BGI/tscratch/vbenson/EarthNet/droughtearthnet/data/Somalia/era5_0d25.zarr")
 
     # temp_offset_era5 = calculate_offset(era5.time.values[0])
 
     start_date = '2016-01-01'
     end_date = '2023-12-31'
 
-    cube = load_subset_otf_from_tiffs(
+    cube = load_otf_from_tiffs(
         dev_path=None,
         bands=None,
         collection=None,
@@ -705,22 +877,30 @@ if __name__ == '__main__':
         i_x=i_x,
         c_size=None,
         time_range=[start_date, end_date],
+        spat_res=5600,
+        subset=False,
+        return_box=False,
     )
     print(cube.time.values[0], cube.time.values[-1], flush=True)
 
     transformer = Transformer.from_crs(4326, cube.spatial_ref.attrs['crs_wkt'], always_xy=True)
 
-    points_lr = [(transformer.transform(y, x)) for x in era5.lat.values for y in era5.lon.values]
-    points_lr_back = [(y, x) for x in era5.lat.values for y in era5.lon.values]
-    points_hr = [(y, x) for x in cube.x.values for y in cube.y.values]
-    era5_index = [points_lr_back[i] for i in find_nearest_indices(points_hr, points_lr)]
-    # assert len(np.unique(era5_index, axis=0))
+    if add_weather:
+        points_lr = [(transformer.transform(y, x)) for x in era5.lat.values for y in era5.lon.values]
+        points_lr_back = [(y, x) for x in era5.lat.values for y in era5.lon.values]
+        points_hr = [(y, x) for x in cube.x.values for y in cube.y.values]
+        era5_index = [points_lr_back[i] for i in find_nearest_indices(points_hr, points_lr)]
 
-    vci_3m_path = f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_{i_y}_{i_x}.zarr'
+        if not len(np.unique(era5_index, axis=0)) == 1:
+            print('found multiple closest era5 pixels', flush=True)
+            # implement a dictionary wise approach to forward the correct era5 pixel to the correct cube pixel
+
+    vci_3m_path = f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_no_smooth_{i_y}_{i_x}.zarr'
 
     if not os.path.exists(vci_3m_path):
         print('Calculating VCI3M at', time.ctime(), flush=True)
-        weekly_vci3m = get_vci3m_weekly(cube).load()
+        weekly_vci3m = get_vci3m_weekly(cube, smooth_window_extremes=0).load()
+        # -> performance was better forecasting the vci then 3m average
 
         print('Saving VCI3M at', time.ctime(), flush=True)
         weekly_vci3m.to_zarr(vci_3m_path, compute=True, mode='w')
@@ -732,30 +912,35 @@ if __name__ == '__main__':
 
     print(weekly_vci3m.time.values[0], weekly_vci3m.time.values[-1], flush=True)
 
-    weekly_era5 = (
-        era5.sel(time=slice(start_date, end_date))
-        # .resample(time="1W", origin='start_day')
-        # .mean()
-        .sel(lat=era5_index[0][0], lon=era5_index[0][1], method="nearest")[era5_vars]
-        .drop_vars(["lat", "lon"])
-    ).load()
+    era5_resampled = None
+    if add_weather:
+        weekly_era5 = (
+            era5.sel(time=slice(start_date, end_date))
+            # .resample(time="1W", origin='start_day')
+            # .mean()
+            .sel(lat=era5_index[0][0], lon=era5_index[0][1], method="nearest")[era5_vars]
+            .drop_vars(["lat", "lon"])
+        ).load()
 
-    weather_np = weekly_era5.to_array(dim='variable').values
+        weather_np = weekly_era5.to_array(dim='variable').values
 
-    time_range = define_time_range(weekly_era5.time.values)
-    era5_resampled = np.zeros((weather_np.shape[0], time_range.shape[0]))
+        time_range = define_time_range(weekly_era5.time.values)
+        era5_resampled = np.zeros((weather_np.shape[0], time_range.shape[0]))
 
-    for i in range(weather_np.shape[0]):
-        era5_resampled[i] = resample_weekly_custom_daterange(weather_np[i, :], weekly_era5.time.values, time_range)
-    weekly_vci3m = weekly_vci3m.sel(time=slice(weekly_era5.time.values[0], weekly_era5.time.values[-1]))
+        for i in range(weather_np.shape[0]):
+            era5_resampled[i] = resample_weekly_custom_daterange(weather_np[i, :], weekly_era5.time.values, time_range)
+        weekly_vci3m = weekly_vci3m.sel(time=slice(weekly_era5.time.values[0], weekly_era5.time.values[-1]))
 
-    print(weekly_era5.time.values[0], weekly_era5.time.values[-1], flush=True)
+        print(weekly_era5.time.values[0], weekly_era5.time.values[-1], flush=True)
 
     weekly_vci3m = weekly_vci3m.chunk(dict(time=-1, y='auto', x='auto'))
 
     shifts = np.array([-6, -5, -4, -3, -2, -1, 0, 4, 6, 8, 10, 12])
     buffer = __get_buffer_shift(shifts)
-    in_dims = 1 + era5_resampled.shape[0]
+
+    in_dims = 1
+    if add_weather:
+        in_dims += era5_resampled.shape[0]
     shifts_backwards, predict_on = __get_array_indicators_for_lin_reg(shifts, in_dims)
 
     window = 200
@@ -780,7 +965,7 @@ if __name__ == '__main__':
             'predict_on': predict_on,
         },
     ).to_zarr(
-        f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/subset_chunk_coords_{i_y}_{i_x}.zarr',
+        f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/VCI_no_smooth_forecast_{i_y}_{i_x}.zarr',
         compute=True,
         mode='w',
     )
