@@ -1,9 +1,9 @@
 # yet more cubing attempts!
 from shapely import Point
-from wedata.stac_downloader.combine import combine_to_cube
-from wedata.stac_downloader.download import download_request_from_probe
-from wedata.stac_downloader.request import build_request_from_probe, probe_request
-from wedata.stac_downloader.utils import parse_dec_to_lon_lat_point, parse_dms_to_lon_lat_point
+from .combine import combine_to_cube
+from .download import download_request_from_probe
+from .request import build_request_from_probe, probe_request
+from .utils import parse_dec_to_lon_lat_point, parse_dms_to_lon_lat_point
 
 
 def get_minicube(pos_coordinates, time_range, edge_length_m, target_res_m, sel_bands, workdir):

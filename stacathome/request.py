@@ -7,9 +7,11 @@ from odc.geo.geobox import GeoBox
 from pystac import Item
 from pystac_client import Client
 from pystac_client.exceptions import APIError
-from shapely import box, buffer, distance, transform, union
+from shapely import box, buffer, transform, union
 
-from .asset_specs import get_stac_filter_arg, supported_mspc_collections, transform_asset_bbox
+from .asset_specs import (get_stac_filter_arg, supported_mspc_collections, get_asset_box_and_transform,
+                          contains_in_native_crs, get_asset_crs, transform_asset_bbox,
+                          centroid_distance_in_native_crs, intersection_area_percent_in_native_crs)
 from .utils import cut_box_to_edge_around_coords, get_transform, get_utm_crs_from_lon_lat, time_range_parser
 
 
@@ -74,12 +76,13 @@ def probe_collection(
     tile_ids_contained = [
         (
             asset.properties[tile_keyword],
-            transform_asset_bbox(asset, collection=collection).contains(bbox_wgs84),
-            distance(transform_asset_bbox(asset, collection=collection).centroid, bbox_wgs84.centroid),
+            get_asset_crs(asset, collection=collection),
+            contains_in_native_crs(asset, bbox_wgs84, collection=collection),
+            centroid_distance_in_native_crs(asset, bbox_wgs84, collection=collection),
         )
         for asset in query
     ]
-    tile_ids, contained, distances = list(zip(*tile_ids_contained))
+    tile_ids, tile_crs, contained, distances = list(zip(*tile_ids_contained))
 
     if any(contained):
         tiles = list({x for x, y in zip(tile_ids, contained) if y})
@@ -90,44 +93,46 @@ def probe_collection(
     # if not, calculate intersection with all intersecting tiles
     # iteratively union them until the requested area is contained
     else:
-        request_area = bbox_wgs84.area
+        # request_area = bbox_wgs84.area
         tiles_area = {}
         tiles_bounds = {}
+        most_found_crs = max(set(tile_crs), key=tile_crs.count)
+
         for asset in query:
             if asset.properties[tile_keyword] not in tiles_area:
                 tiles_area[asset.properties[tile_keyword]] = []
                 tiles_bounds[asset.properties[tile_keyword]] = []
 
             tiles_area[asset.properties[tile_keyword]].extend(
-                [transform_asset_bbox(asset, collection=collection).intersection(bbox_wgs84).area]
+                [intersection_area_percent_in_native_crs(asset, bbox_wgs84, collection=collection)]
             )
-            tiles_bounds[asset.properties[tile_keyword]].extend([transform_asset_bbox(asset, collection=collection)])
+            asset_bbox, _ = get_asset_box_and_transform(asset, collection=collection)
+            print(asset_bbox.crs, most_found_crs)
+            if asset_bbox.crs != most_found_crs:
+                asset_bbox = transform(asset_bbox, get_transform(asset_bbox.crs, most_found_crs))
+            tiles_bounds[asset.properties[tile_keyword]].extend([asset_bbox])
 
         for key in tiles_area.keys():
             tiles_area[key] = np.mean(tiles_area[key])
 
         tiles_area = {k: v for k, v in sorted(tiles_area.items(), key=lambda item: item[1], reverse=True)}
 
+        # check if the zones are all within the same utm zone
+        if len(set(tile_crs)) > 1:
+            print(
+                'Tiles are not in the same UTM zone returning tiles with percentage of area cover in the requested area as dict'
+            )
+            return tiles_area
+
         iterative_shape = None
         tiles = []
-        for key in tiles_area.keys():
+        for key in tiles_bounds.keys():
             if not iterative_shape:
                 iterative_shape = max(set(tiles_bounds[key]), key=tiles_bounds[key].count)
             iterative_shape = union(iterative_shape, (max(set(tiles_bounds[key]), key=tiles_bounds[key].count)))
             tiles.append(key)
             if iterative_shape.contains(bbox_wgs84):
                 break
-
-        # check if the zones are all within the same utm zone
-        multiple_utm_zone = False
-        for i in tiles:
-            if i[0:2] != tiles[0][0:2]:
-                multiple_utm_zone = True
-                print(
-                    'Tiles are not in the same UTM zone returning tiles with percentage of area cover in the requested area as dict'
-                )
-        if multiple_utm_zone:
-            tiles = {k: v / request_area for k, v in zip(tiles, [tiles_area[i] for i in tiles])}
 
     if return_box:
         tilelist = tiles if isinstance(tiles, list) else list(tiles.keys())
@@ -308,6 +313,62 @@ def request_data_by_tile(
     return [Item.from_dict(feature) for feature in query_dict["features"]]
 
 
+def request_data_by_bbox(bbox,
+                         time_range,
+                         save_dir,
+                         url: str = "https://planetarycomputer.microsoft.com/api/stac/v1",
+                         collection: str = "sentinel-2-l2a",
+                         verbose=False) -> list[Item]:
+    """
+    Request data from the Planetary Computer API by bounding box and time range.
+
+    Parameters
+    ----------
+    bbox : BoundingBox
+        The bounding box to filter the items by.
+    time : int
+        The year to filter the items by.
+    save_dir : str
+        The directory to save the downloaded data to.
+    url : str, optional
+        The API url to query, by default "https://planetarycomputer.microsoft.com/api/stac/v1".
+    collection : str, optional
+        The collection to query, by default "sentinel-2-l2a".
+    verbose : bool, optional
+        Whether to print verbose output, by default False.
+
+    Returns
+    -------
+    list[Item]
+        List of pystac.Item objects.
+    """
+    if isinstance(time_range, str):
+        time_range_str = time_range.replace('/', '_')
+    else:
+        time_range_str = str(time_range)
+    out_path = os.path.join(save_dir, f"{collection}_{bbox.bounds}_" f"{time_range_str}_query.json") if save_dir else None
+    if out_path and os.path.exists(out_path):
+        with open(out_path) as json_file:
+            query_dict = json.load(json_file)
+    else:
+        query_dict = request_stac_rest_api(
+            collection=collection,
+            url=url,
+            datetime=time_range,
+            intersects=bbox,
+        ).to_dict()
+
+        if query_dict == {}:
+            print(f"Failed to get data for {bbox.bounds} {time_range}.", flush=True)
+            return []
+
+        if out_path:
+            with open(out_path, "w") as json_file:
+                json.dump(query_dict, json_file, indent=4)
+
+    return [Item.from_dict(feature) for feature in query_dict["features"]]
+
+
 def request_stac_rest_api(
     collection: str = 'sentinel-2-l2a',
     url: str = "https://planetarycomputer.microsoft.com/api/stac/v1",
@@ -322,4 +383,7 @@ def request_stac_rest_api(
             break
         except APIError:
             time.sleep(3)
+            query = None
+    if query is None:
+        raise ValueError("Failed to get data from the API")
     return query

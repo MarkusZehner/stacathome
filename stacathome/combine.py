@@ -83,5 +83,5 @@ def combine_to_cube(center_point, time_range, probe_dict, request_from_probe, wo
     out_path = os.path.join(workdir, f"custom_cube_{center_point.y:.2f}_{center_point.x:.2f}.zarr.zip")
 
     store = zarr.ZipStore(out_path, mode="x")
-    comb_cube.to_zarr(store, mode="w-")
+    comb_cube.to_zarr(store, mode="w-", consolidated=True)
     store.close()

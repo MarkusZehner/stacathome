@@ -76,7 +76,8 @@ def parse_dec_to_lon_lat_point(dec_string):
 
 
 def get_time_binning(
-    timeframe: int | tuple[int] | tuple[str],
+    timeframe: int | tuple[int] | tuple[str] = None,
+    index: int = None,
     start_of_time: str = '1980-01-01',
     end_of_time: str = '2030-01-01',
     t_freq: str = '15D',
@@ -85,7 +86,10 @@ def get_time_binning(
     Generate a common time binning and return periods of interest.
     """
     # add other timeframe selection options?
-    time_bins = pd.date_range(start=start_of_time, end=end_of_time, freq=t_freq)
+    time_bins = pd.date_range(start=start_of_time, end=end_of_time, freq=t_freq, inclusive='both')
+    if index is not None:
+        return (time_bins[index], time_bins[index + 1])
+
     if isinstance(timeframe, int) and timeframe in time_bins.year:
         return time_bins.where(time_bins.year == timeframe).dropna()
     elif isinstance(timeframe, tuple) and len(timeframe) == 2 and all(year in time_bins.year for year in timeframe):
@@ -96,7 +100,7 @@ def get_time_binning(
         return time_bins
 
 
-def filter_items_to_data_coverage(items: list[Item], bbox: BoundingBox, sensor: str = "S2") -> list[Item]:
+def filter_items_to_data_coverage(items: list[Item], bbox: BoundingBox, sensor: str = "sentinel-2-l2a") -> list[Item]:
     """
     Using the data coverage geometry in the STAC item to filter the items and remove
     those that do not intersect with the requested bounds.
@@ -139,6 +143,7 @@ def run_with_multiprocessing(target_function: Callable, **func_kwargs):
         func_args (tuple): Positional arguments for the target function.
         func_kwargs (dict): Keyword arguments for the target function.
     """
+    multiprocessing.set_start_method("spawn", force=True)
     for _ in range(3):
         process = multiprocessing.Process(target=target_function, kwargs=func_kwargs, name="throwawayWorker")
 
@@ -153,6 +158,48 @@ def run_with_multiprocessing(target_function: Callable, **func_kwargs):
             break
 
     time.sleep(0.1)
+
+
+def wrapper_function(queue, target_function, *args, ** kwargs):
+    """ Wrapper to execute function and put result in queue. """
+    result = target_function(*args, **kwargs)
+    queue.put(result)  # Store result in queue
+
+
+def run_with_multiprocessing_and_return(target_function: Callable, **func_kwargs):
+    """
+    Wrapper to execute a function in separate processes to isolate memory leaks.
+    Will retry the function 3 times if it fails.
+
+    Args:
+        target_function (Callable): The function to run in a separate process.
+        func_kwargs (dict): Keyword arguments for the target function.
+    Returns:
+        The output of the target function if successful, otherwise None.
+    """
+
+    multiprocessing.set_start_method("spawn", force=True)
+    for _ in range(3):
+        queue = multiprocessing.Queue()  # Create a queue to collect results
+        process = multiprocessing.Process(target=wrapper_function,
+                                          args=(queue, target_function),
+                                          kwargs=func_kwargs,
+                                          name="throwawayWorker")
+
+        process.start()
+        process.join()
+
+        if process.exitcode is None:
+            print("Process Worker did not exit cleanly, terminating...")
+            process.terminate()
+
+        print(f"Process Worker completed with exit code {process.exitcode}")
+
+        if process.exitcode == 0:
+            return queue.get()  # Retrieve the function result from the queue
+
+    time.sleep(0.1)
+    return None  # Return None if all attempts fail
 
 
 def get_transform(from_crs, to_crs, always_xy=True):
@@ -173,3 +220,21 @@ def transform_coords(x_y, project):
     for i in range(len(x_y)):
         x_y[i] = project.transform(x_y[i][0], x_y[i][1])
     return x_y
+
+
+def compute_scale_and_offset(da, n=16):
+    """Calculate offset and scale factor for int conversion
+
+    Based on Krios101's code above.
+    """
+
+    vmin = np.nanmin(da).item()
+    vmax = np.nanmax(da).item()
+
+    # stretch/compress data to the available packed range
+    scale_factor = (vmax - vmin) / (2 ** n - 2)
+
+    # # translate the range to be symmetric about zero
+    # add_offset = (vmin + 2 ** (n - 1) * scale_factor) + mean_shift
+
+    return scale_factor  # , add_offset

@@ -281,6 +281,7 @@ def compute_vci_weekly_from_weekly_ndvi(ndvi_weekly, date_range,
     week_of_year = doy_index // 7
     if ndvi_min is None and ndvi_max is None:
         ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(
+            # ndvi_weekly[:52 * 4], week_of_year, smooth_window_extremes)  # cut ndvi here (only right side) to generate min/max fromup to certain range
             ndvi_weekly, week_of_year, smooth_window_extremes)
 
         temp_ndvi_min = ndvi_min[week_of_year.astype(int)]
@@ -402,7 +403,7 @@ def get_ndvi_weekly(dataset):
         kwargs={
             'return_date_range': False,
         },
-        input_core_dims=[['time'], ['time'], ['time'], ['time'], ['time'], ['time']],
+        input_core_dims=[['time']] * 6,
         output_core_dims=[['weeks']],
         dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
         dask='parallelized',
@@ -429,7 +430,7 @@ def get_vci3m_weekly(dataset, smooth_window_extremes=12):
         kwargs={
             'smooth_window_extremes': smooth_window_extremes,
         },
-        input_core_dims=[['time'], ['time'], ['time'], ['time'], ['time'], ['time']],
+        input_core_dims=[['time']] * 6,
         output_core_dims=[['weeks']],
         dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
         dask='parallelized',

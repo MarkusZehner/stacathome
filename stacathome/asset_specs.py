@@ -1,8 +1,43 @@
 import pandas as pd
 from pyproj import CRS
-from shapely import box, Polygon, transform
+from shapely import box, Polygon, transform, distance
 
 from .utils import get_transform
+
+
+def base_attrs():
+    BASE_ATTRS = {
+        'Name': 'WeGenS2Dataset',
+        'Version': '0.0',
+    }
+    return BASE_ATTRS
+
+
+class Band():
+    def __init__(self, name, data_type, no_data_value, spatial_resolution, scale_factor, continuous=True, valid_range=None):
+        self.name = name
+        self.data_type = data_type
+        self.no_data_value = no_data_value
+        self.spatial_resolution = spatial_resolution
+        self.scale_factor = scale_factor
+        self.continuous = continuous
+        self.valid_range = valid_range
+
+    def __str__(self):
+        return f"Band: {self.name}, Data Type: {self.data_type}, NoData Value: {self.no_data_value}, " \
+            f"Spatial Resolution: {self.spatial_resolution}, Scale Factor: {self.scale_factor}, " \
+            f"Valid Range: {self.valid_range}, Measurement Type: {self.measurement_type}"
+
+
+class STACCollection():
+    def __init__(self, name, filter_arg, grid, attributes):
+        self.name = name
+        self.filter_arg = filter_arg
+        self.grid = grid
+        self.attributes = attributes
+
+    def __str__(self):
+        return f"Collection: {self.name}, Filter Argument: {self.filter_arg}, Grid: {self.grid}, Attributes: {self.attributes}"
 
 
 def supported_mspc_collections(S2_tile_grid: str = None, MODIS_grid: str = None, ESA_WorldCover_grid: str = None):
@@ -11,8 +46,16 @@ def supported_mspc_collections(S2_tile_grid: str = None, MODIS_grid: str = None,
     """
 
     return {
-        "sentinel-2-l2a": {"filter_arg": "s2:mgrs_tile", "grid": S2_tile_grid, "attributes": sentinel_2_attributes()},
-        "modis-13Q1-061": {"filter_arg": "modis:tile-id", "grid": MODIS_grid, "attributes": modis_16d_attributes()},
+        "sentinel-2-l2a": {
+            "filter_arg": "s2:mgrs_tile",
+            "grid": S2_tile_grid,
+            "attributes": sentinel_2_attributes()
+        },
+        "modis-13Q1-061": {
+            "filter_arg": "modis:tile-id",
+            "grid": MODIS_grid,
+            "attributes": modis_16d_attributes()
+        },
         "esa-worldcover": {
             "filter_arg": "esa_worldcover:product_tile",
             "grid": ESA_WorldCover_grid,
@@ -73,8 +116,8 @@ def sentinel_2_attributes():
         ("B8A", "uint16", 0, 20, 864.7, 21, 864.0, 21, 52.5, 72, "continuous"),
         ("B09", "uint16", 0, 60, 945.1, 19, 943.2, 20, 9, 114, "continuous"),
         # ("B10", "uint16", 0, 60, 1373.5, 29, 1376.9, 29, 6, 50), not present in MSPC
-        ("B11", "uint16", 0, 60, 1613.7, 90, 1610.4, 94, 4, 100, "continuous"),
-        ("B12", "uint16", 0, 60, 2202.4, 174, 2185.7, 184, 1.5, 100, "continuous"),
+        ("B11", "uint16", 0, 20, 1613.7, 90, 1610.4, 94, 4, 100, "continuous"),
+        ("B12", "uint16", 0, 20, 2202.4, 174, 2185.7, 184, 1.5, 100, "continuous"),
         ("SCL", "uint8", 0, 20, None, None, None, None, None, None, "distinct"),
     ]
 
@@ -290,9 +333,9 @@ def get_resampling_per_band(target_res, bands, collection):
     resampling_scheme = {}
     for band, res, mtype in zip(band_names, resolutions, measurement_type):
         if mtype == "continuous":
-            resampling_scheme[band] = "nearest" if target_res < res else "bilinear"
+            resampling_scheme[band] = "nearest" if target_res <= res else "bilinear"
         else:
-            resampling_scheme[band] = "nearest"
+            resampling_scheme[band] = "nearest" if target_res <= res else "mode"
 
     return {k: v for k, v in resampling_scheme.items() if k in bands}
 
@@ -312,3 +355,46 @@ def transform_asset_bbox(asset, to=4326, collection='sentinel-2-l2a'):
         bbox = box(*asset.bbox)
         tr = get_transform(asset.properties['proj:epsg'], to)
     return transform(bbox, tr)
+
+
+def get_asset_crs(asset, collection='sentinel-2-l2a'):
+    if collection == 'sentinel-2-l2a':
+        return asset.properties['proj:epsg']
+    if collection == 'modis-13Q1-061':
+        return CRS.from_wkt(asset.properties['proj:wkt2'])
+    if collection == 'esa-worldcover':
+        return asset.properties['proj:epsg']
+
+
+def get_asset_box_and_transform(asset, collection='sentinel-2-l2a', from_crs=4326):
+    to_crs = get_asset_crs(asset, collection)
+    if collection == 'sentinel-2-l2a':
+        keys = list(get_attributes('sentinel-2-l2a')['data_attrs']['Band'])
+        k = next((key for key in keys if key in asset.assets), None)
+        bbox = box(*asset.assets[k].extra_fields['proj:bbox'])
+        tr = get_transform(from_crs, to_crs)
+    if collection == 'modis-13Q1-061':
+        bbox = Polygon(asset.properties['proj:geometry']['coordinates'][0])
+        tr = get_transform(from_crs, to_crs)
+    if collection == 'esa-worldcover':
+        bbox = box(*asset.bbox)
+        tr = get_transform(from_crs, to_crs)
+    return bbox, tr
+
+
+def contains_in_native_crs(asset, compare_box, compare_box_crs=4326, collection='sentinel-2-l2a'):
+    asset_bbox, tr = get_asset_box_and_transform(asset=asset, collection=collection, from_crs=compare_box_crs)
+    bbox = transform(compare_box, tr)
+    return asset_bbox.contains(bbox)
+
+
+def centroid_distance_in_native_crs(asset, compare_box, compare_box_crs=4326, collection='sentinel-2-l2a'):
+    asset_bbox, tr = get_asset_box_and_transform(asset=asset, collection=collection, from_crs=compare_box_crs)
+    bbox = transform(compare_box, tr)
+    return distance(asset_bbox.centroid, bbox.centroid)
+
+
+def intersection_area_percent_in_native_crs(asset, compare_box, compare_box_crs=4326, collection='sentinel-2-l2a'):
+    asset_bbox, tr = get_asset_box_and_transform(asset=asset, collection=collection, from_crs=compare_box_crs)
+    bbox = transform(compare_box, tr)
+    return asset_bbox.intersection(bbox).area / bbox.area
