@@ -232,6 +232,7 @@ def compute_scale_and_offset(da, n=16):
     vmax = np.nanmax(da).item()
 
     # stretch/compress data to the available packed range
+    # -2 to reserve the upper bit for nan only, otherwise maxval == nan
     scale_factor = (vmax - vmin) / (2 ** n - 2)
 
     # # translate the range to be symmetric about zero

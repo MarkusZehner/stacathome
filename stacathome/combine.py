@@ -4,9 +4,10 @@ from collections import Counter
 
 import xarray as xr
 import zarr
+import numpy as np
 
 from .asset_specs import add_attributes
-from .sentinel_2_utils import drop_no_data_s2, harmonize_to_old
+from .sentinel_2_utils import drop_no_data_s2, harmonize_to_old, compute_scale_and_offset
 
 
 def preprocess_collection(xds, collection):
@@ -21,7 +22,7 @@ def preprocess_collection(xds, collection):
 
 
 def open_mf_zarr_zip(collection, cube_parts_paths):
-    xds = xr.merge([xr.open_zarr(f).compute() for f in cube_parts_paths])
+    xds = xr.concat([xr.open_zarr(f) for f in cube_parts_paths], dim='time')
     xds = xds.sortby("time")
     xds = preprocess_collection(xds, collection)
 
@@ -32,18 +33,18 @@ def open_mf_zarr_zip(collection, cube_parts_paths):
     return xds
 
 
-def combine_to_cube(center_point, time_range, probe_dict, request_from_probe, workdir, edge_length_m):
-    loc_names = [(k, request_from_probe[k][0]) for k in request_from_probe.keys()]
+def combine_to_cube(files_to_combine, center_point, time_range, probe_dict, request_from_probe, workdir, edge_length_m, fname=None):  # , remove_parts=True):
 
     boxes = [request_from_probe[k][2] for k in request_from_probe.keys()]
     box_counter = Counter(boxes)
     most_common_box = box_counter.most_common(1)[0][0].boundingbox
 
     loc_names = [(k, request_from_probe[k][0]) for k in request_from_probe.keys()]
-    files_in_workdir = os.listdir(workdir)
     comb_cubes = {}
+    fname_final = []
     for k, i in loc_names:
-        t_files = [os.path.join(workdir, f) for f in files_in_workdir if i in f and f.endswith('.zarr.zip')]
+        fname_final.append(i)
+        t_files = [os.path.join(workdir, f) for f in files_to_combine if i + k in f and f.endswith('.zarr.zip')]
         comb_cubes[k] = open_mf_zarr_zip(k, t_files)
 
         for k in comb_cubes.keys():
@@ -80,8 +81,21 @@ def combine_to_cube(center_point, time_range, probe_dict, request_from_probe, wo
         if 'preferred_chunks' in comb_cube[i].encoding:
             del comb_cube[i].encoding['preferred_chunks']
 
-    out_path = os.path.join(workdir, f"custom_cube_{center_point.y:.2f}_{center_point.x:.2f}.zarr.zip")
+        if i not in ['SCL', 'spatial_ref']:
+            comb_cube[i] = comb_cube[i].astype("float32")
+            comb_cube[i].encoding = {"dtype": "uint16",
+                                     "scale_factor": compute_scale_and_offset(comb_cube[i].values),
+                                     "add_offset": 0.0,
+                                     "_FillValue": 65535}
+        elif i == 'SCL':
+            comb_cube[i] = comb_cube[i].astype("uint8")
+    name = fname if fname else str(np.unique(fname_final)[0])
+    out_path = os.path.join(workdir, f"{name}combined.zarr.zip")
 
     store = zarr.ZipStore(out_path, mode="x")
     comb_cube.to_zarr(store, mode="w-", consolidated=True)
     store.close()
+
+    # if remove_parts:
+    #     for i in t_files:
+    #         os.remove(i)

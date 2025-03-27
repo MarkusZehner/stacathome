@@ -129,10 +129,14 @@ def combine_loaded_cubes(
     )
 
 
-def do_combine(path_list, out_path, remove_parts=True):
+def do_combine(path_list, out_path, remove_parts=True, time_chunk=500, spatial_chunk=50):
     cubes = [xr.open_zarr(i) for i in path_list]
     cube = xr.concat(cubes, dim='time')
-    cube = cube.chunk({"time": 500, "x": 50, "y": 50, "x20": 50, "y20": 50})
+    cube = cube.sortby('time')
+
+    chunking = {'time': time_chunk}
+    chunking.update({i: spatial_chunk for i in cube.coords if i not in ['time', 'spatial_ref']})
+    cube = cube.chunk(chunking)
 
     for i in cube.data_vars.keys():
         if i not in ['SCL', 'spatial_ref']:
@@ -158,6 +162,7 @@ def get_s2_multires_zip(
     time_bins: int | tuple[int] | tuple[str],
     work_dir: str,
     bands: list[str] = None,
+    clip_by_scl: bool = False,
     # single_file=False,
     # single_file_time_chunk=50,
     # overwrite: bool = False,
@@ -238,7 +243,7 @@ def get_s2_multires_zip(
             crs=crs,
             tile=tile,
             number=number,
-            # single_file_path=cube_path,
+            clip_by_scl=clip_by_scl,
             verbose=verbose,
         )
         if isinstance(c_name, str):
@@ -250,6 +255,7 @@ def get_s2_multires_zip(
 def load_and_save_s2_multires_zip(
     data_path, items_in_timestamp, bands, bounds, t_bin_s, t_bin_e, crs, tile, number,
     # single_file_path=None,
+    clip_by_scl=False,
     verbose=False,
 ):
     s2_attributes = get_attributes('sentinel-2-l2a')['data_attrs']
@@ -334,6 +340,11 @@ def load_and_save_s2_multires_zip(
                 chunking['y'] = -1
 
     multires_cube = xr.merge(multires_cube.values())
+
+    # if clip_by_scl:
+    #     multires_cube = remove_scl_invalid_pixels(multires_cube
+    #                                                 # , valid_values=[2, 4, 5, 6, 7, 11]
+    #                                                 )
     multires_cube = harmonize_to_old(multires_cube, scale=True)
 
     cube_attrs = {
@@ -431,9 +442,9 @@ def drop_no_data_s2(cube, nodata_flag=0):
     return cube.isel(time=np.where(mean_over_time != nodata_flag)[0])
 
 
-def remove_scl_invalid_pixels(xr: xr.Dataset, valid_values: list[int] = None):
+def remove_scl_invalid_pixels(xr: xr.Dataset, valid_values: list[int] = None, fill=0):
     if valid_values is None:
         valid_values = [2, 4, 5, 6, 7, 11]
 
     scl_masks = xr.where(xr.SCL.isin(valid_values), 1, 0)
-    return xr.where(scl_masks == 1, xr, 0)
+    return xr.where(scl_masks == 1, xr, fill)

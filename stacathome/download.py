@@ -13,19 +13,23 @@ from .asset_specs import get_attributes, get_resampling_per_band, supported_mspc
 from .utils import filter_items_to_data_coverage, get_transform, run_with_multiprocessing
 
 
-def download_request_from_probe(probe_request, sel_bands, workdir):
+def download_request_from_probe(probe_request, sel_bands, workdir, fname=None):
+    file_list = []
     for collection_name in supported_mspc_collections().keys():
         if collection_name in probe_request and collection_name in sel_bands:
             loc_name, item_collections, request_box = probe_request[collection_name]
+            # loc_name = fname if fname else loc_name
             out_path = os.path.join(workdir, loc_name + collection_name + '_')
             bands = sel_bands[collection_name]
-            get_cube_part(
+            files_ = get_cube_part(
                 item_collections,
                 collection=collection_name,
                 request_geobox=request_box,
                 selected_bands=bands,
                 out_dir=out_path,
             )
+            file_list.extend(files_)
+    return file_list
 
 
 def get_cube_part(items, collection, request_geobox, selected_bands, out_dir, asset_bin_size=50):
@@ -45,10 +49,12 @@ def get_cube_part(items, collection, request_geobox, selected_bands, out_dir, as
         resampling = "nearest"
 
     # subset items if asset_bin_size is not None
+    file_list = []
     if asset_bin_size is not None and len(items) > asset_bin_size:
         items = [items[i : i + asset_bin_size] for i in range(0, len(items), asset_bin_size)]
         for asset_bin_nr, item_list in enumerate(items):
             out_dir_ = out_dir + f"asset_bin_{str(asset_bin_nr * asset_bin_size).zfill(4)}.zarr.zip"
+            file_list.append(out_dir_)
             if os.path.exists(out_dir_):
                 print(f"Asset bin {asset_bin_nr} already exists, skipping")
                 continue
@@ -61,11 +67,13 @@ def get_cube_part(items, collection, request_geobox, selected_bands, out_dir, as
                 geobox=request_geobox,
                 resampling=resampling,
             )
+
     else:
         out_dir_ = out_dir + "all_assets.zarr.zip"
+        file_list.append(out_dir_)
         if os.path.exists(out_dir_):
             print("Asset already exists, skipping")
-            return
+            return file_list
         run_with_multiprocessing(
             save_stac_to_zarr_zip,
             items=items,
@@ -75,6 +83,8 @@ def get_cube_part(items, collection, request_geobox, selected_bands, out_dir, as
             geobox=request_geobox,
             resampling=resampling,
         )
+
+    return file_list
 
 
 def save_stac_to_zarr_zip(items, out_path, bands, dtype, geobox=None, boundingbox=None, resampling="nearest"):

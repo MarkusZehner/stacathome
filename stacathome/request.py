@@ -2,12 +2,13 @@ import json
 import os
 import time
 
+from collections import defaultdict
 import numpy as np
 from odc.geo.geobox import GeoBox
 from pystac import Item
 from pystac_client import Client
 from pystac_client.exceptions import APIError
-from shapely import box, buffer, transform, union
+from shapely import box, buffer, transform, union, union_all
 
 from .asset_specs import (get_stac_filter_arg, supported_mspc_collections, get_asset_box_and_transform,
                           contains_in_native_crs, get_asset_crs, transform_asset_bbox,
@@ -84,11 +85,14 @@ def probe_collection(
     ]
     tile_ids, tile_crs, contained, distances = list(zip(*tile_ids_contained))
 
+    # easy case: one tile fity request
+    skip_funny_business = False
     if any(contained):
         tiles = list({x for x, y in zip(tile_ids, contained) if y})
         if len(tiles) > 1:
             print('Multiple tiles containing found, choosing the one with the smallest distance to the center')
             tiles = [tile_ids[distances.index(min(distances))]]
+        skip_funny_business = True
 
     # if not, calculate intersection with all intersecting tiles
     # iteratively union them until the requested area is contained
@@ -99,18 +103,19 @@ def probe_collection(
         most_found_crs = max(set(tile_crs), key=tile_crs.count)
 
         for asset in query:
-            if asset.properties[tile_keyword] not in tiles_area:
-                tiles_area[asset.properties[tile_keyword]] = []
-                tiles_bounds[asset.properties[tile_keyword]] = []
+            tile_id_iter = asset.properties[tile_keyword]
+            if tile_id_iter not in tiles_area:
+                tiles_area[tile_id_iter] = []
+                tiles_bounds[tile_id_iter] = []
 
-            tiles_area[asset.properties[tile_keyword]].extend(
+            tiles_area[tile_id_iter].extend(
                 [intersection_area_percent_in_native_crs(asset, bbox_wgs84, collection=collection)]
             )
             asset_bbox, _ = get_asset_box_and_transform(asset, collection=collection)
-            print(asset_bbox.crs, most_found_crs)
-            if asset_bbox.crs != most_found_crs:
-                asset_bbox = transform(asset_bbox, get_transform(asset_bbox.crs, most_found_crs))
-            tiles_bounds[asset.properties[tile_keyword]].extend([asset_bbox])
+            asset_crs = get_asset_crs(asset, collection)
+            if asset_crs != most_found_crs:
+                asset_bbox = transform(asset_bbox, get_transform(asset_crs, most_found_crs))
+            tiles_bounds[tile_id_iter].extend([asset_bbox])
 
         for key in tiles_area.keys():
             tiles_area[key] = np.mean(tiles_area[key])
@@ -118,11 +123,19 @@ def probe_collection(
         tiles_area = {k: v for k, v in sorted(tiles_area.items(), key=lambda item: item[1], reverse=True)}
 
         # check if the zones are all within the same utm zone
+        max_key = None
+        # print(tile_crs)
         if len(set(tile_crs)) > 1:
             print(
-                'Tiles are not in the same UTM zone returning tiles with percentage of area cover in the requested area as dict'
+                'Tiles are not in the same UTM zone returning tiles with percentage of area cover in the requested area as dict',
+                tiles_area
             )
-            return tiles_area
+            # if not, we want to know which crs covers most
+            grouped_sums = defaultdict(float)
+            for key, value in tiles_area.items():
+                grouped_sums[key[:2]] += value
+            max_key = max(grouped_sums, key=grouped_sums.get)
+            best_matching_crs = [code for code in set(tile_crs) if str(code)[-2:] == max_key]
 
         iterative_shape = None
         tiles = []
@@ -136,6 +149,7 @@ def probe_collection(
 
     if return_box:
         tilelist = tiles if isinstance(tiles, list) else list(tiles.keys())
+        # print(tilelist)
         boxes = {}
         for t in tilelist:
             box_t = [
@@ -144,18 +158,34 @@ def probe_collection(
                 if asset.properties[tile_keyword] == t
             ]
             boxes[t] = max(set(box_t), key=box_t.count)
+
+        if len(set(tile_crs)) > 1 and not skip_funny_business:
+            # if now multiple crs are found, we need to enlarge one of the boxes in the correct crs,
+            # so that the final grid is consistent with largest amount of data
+            use_this_tile = [k for k in list(boxes.keys()) if str(k)[:2] == max_key]
+            use_this_box = boxes[use_this_tile[0]]
+            tr = get_transform(4326, best_matching_crs[0])
+            tr_back = get_transform(best_matching_crs[0], 4326)
+            box_utm = transform(use_this_box, tr)
+            bounds = list(box_utm.bounds)
+            bounds = [bounds[0] - distance_in_m, bounds[1] - distance_in_m,
+                      bounds[2] + distance_in_m, bounds[3] + distance_in_m]
+            bounds = [round(b) for b in bounds]
+            bounds = box(*[bounds[0] - distance_in_m, bounds[1] - distance_in_m,
+                           bounds[2] + distance_in_m, bounds[3] + distance_in_m])
+            boxes = {use_this_tile[0]: transform(bounds, tr_back)}
+
         return tiles, boxes
 
     return tiles
 
 
 def build_request_from_probe(
-    center_point, time_range, edge_length_m, target_res_m, probe_dict, match_on_s2grid=True, save_dir=None
+    center_point, time_range, edge_length_m, target_res_m, probe_dict, match_on_s2grid=True, save_dir=None, fname=None,
 ):
     requests = {}
     if match_on_s2grid and 'sentinel-2-l2a' not in probe_dict:
         raise ValueError("Match on S2 grid requires a sentinel-2-l2a probe")
-
     if 'sentinel-2-l2a' in probe_dict:
         requests['sentinel-2-l2a'] = build_request_from_probe_collection(
             center_point,
@@ -165,6 +195,7 @@ def build_request_from_probe(
             probe_dict['sentinel-2-l2a'],
             collection='sentinel-2-l2a',
             save_dir=save_dir,
+            fname=fname,
         )
         if match_on_s2grid:
             request_box_match = requests['sentinel-2-l2a'][2]
@@ -180,6 +211,7 @@ def build_request_from_probe(
             collection='modis-13Q1-061',
             request_box=request_box_match,
             save_dir=save_dir,
+            fname=fname,
         )
     if 'esa-worldcover' in probe_dict:
         if not match_on_s2grid:
@@ -193,6 +225,7 @@ def build_request_from_probe(
             collection='esa-worldcover',
             request_box=request_box_match,
             save_dir=save_dir,
+            fname=fname,
         )
     # TODO: add other sensors
     return requests
@@ -208,15 +241,18 @@ def build_request_from_probe_collection(
     loc_name=None,
     request_box=None,
     save_dir=None,
+    fname=None
 ):
     tile_ids = probe_values[0]
-    if not all([i.startswith(tile_ids[0][:2]) for i in tile_ids]):
-        raise ValueError("All tiles must be from the same UTM zone")
+    # if not all([i.startswith(tile_ids[0][:2]) for i in tile_ids]):
+    #     raise ValueError("All tiles must be from the same UTM zone")
     tiles = '_'.join(tile_ids)
     time_range = time_range_parser(time_range)
     time_range_str = str(time_range).replace('/', '_')
+    if fname is None:
+        fname = 'customcube'
     loc_name = (
-        f"customcube_{center_point.y:.2f}_{center_point.x:.2f}_{time_range_str}_{tiles}_"
+        f"{fname}_{center_point.y:.2f}_{center_point.x:.2f}_{time_range_str}_{tiles}_"
         if loc_name is None
         else loc_name
     )
@@ -230,7 +266,7 @@ def build_request_from_probe_collection(
         crs_zone = int(probe_values[0][0][0:2]) + 32600 if center_point.y > 0 else 32700
         utm_boxes = [transform(i, get_transform(4326, crs_zone)) for i in probe_values[1].values()]
         if len(utm_boxes) > 1:
-            utm_boxes = union(*utm_boxes)
+            utm_boxes = union_all(utm_boxes)
         else:
             utm_boxes = utm_boxes[0]
         full_tile_box = GeoBox.from_bbox(utm_boxes.bounds, crs=crs_zone, resolution=target_res_m)

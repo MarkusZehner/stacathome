@@ -8,6 +8,12 @@ from .utils import parse_dec_to_lon_lat_point, parse_dms_to_lon_lat_point
 
 def get_minicube(pos_coordinates, time_range, edge_length_m, target_res_m, sel_bands, workdir):
     for position_str in pos_coordinates:
+        fname = None
+        if len(position_str) == 2:
+            fname, position_str = position_str
+
+        print(fname, position_str)
+
         try:
             position = parse_dms_to_lon_lat_point(position_str)
         except TypeError:
@@ -29,6 +35,8 @@ def get_minicube(pos_coordinates, time_range, edge_length_m, target_res_m, sel_b
             target_res_m=target_res_m,
             probe_dict=probe_dict,
             save_dir=workdir,
+            fname=fname
         )
-        download_request_from_probe(request_from_probe, sel_bands=sel_bands, workdir=workdir)
-        combine_to_cube(position, time_range, probe_dict, request_from_probe, workdir, edge_length_m)
+        file_list = download_request_from_probe(request_from_probe, sel_bands=sel_bands, workdir=workdir)
+        # return file_list, position, time_range, probe_dict, request_from_probe, workdir, edge_length_m
+        combine_to_cube(file_list, position, time_range, probe_dict, request_from_probe, workdir, edge_length_m)

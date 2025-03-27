@@ -305,6 +305,8 @@ def get_band_attributes_modis(attr_dict, cube_vars):
 def add_attributes(cube):
     for collection in supported_mspc_collections().keys():
         attributes = get_attributes(collection)
+        if attributes is None:
+            continue
         data_atts = attributes.pop("data_attrs")
 
         if data_atts is not None:
@@ -398,3 +400,13 @@ def intersection_area_percent_in_native_crs(asset, compare_box, compare_box_crs=
     asset_bbox, tr = get_asset_box_and_transform(asset=asset, collection=collection, from_crs=compare_box_crs)
     bbox = transform(compare_box, tr)
     return asset_bbox.intersection(bbox).area / bbox.area
+
+
+# def return_bounds_in_most_found_crs(asset, most_found_crs, collection='sentinel-2-l2a'):
+#     asset_crs = get_asset_crs(asset, collection)
+#     asset_bbox, _ = get_asset_box_and_transform(asset=asset, collection=collection, from_crs=asset_crs)
+
+#     if asset_crs != most_found_crs:
+#         asset_bbox = transform(asset_bbox, get_transform(asset_crs, most_found_crs))
+
+#     return asset_bbox
