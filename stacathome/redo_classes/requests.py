@@ -136,7 +136,15 @@ class STACRequest():
 
         return loaded_dict
 
-    def load_cubes(self, items: dict, geoboxes: dict, path: Path = None, savefunc: callable = cube_to_zarr_zip):
+    def load_cubes(
+            self,
+            items: dict,
+            geoboxes: dict,
+            path: Path = None,
+            savefunc: callable = cube_to_zarr_zip,
+            split_by: int = None,
+            chunks: dict = None
+    ):
         return_cubes = {}
         for provider, collections in self.stac_providers.items():
             for collection in collections:
@@ -156,10 +164,10 @@ class STACRequest():
                 #     path=path,
                 #     savefunc=savefunc
                 # )
-                data = proc.load_cube(item, bands, geobox, provider, path, savefunc)
+                data = proc.load_cube(item, bands, geobox, provider, path, savefunc, split_by, chunks)
 
-                # if path and savefunc:
-                #     savefunc(path, data)
+                if path and savefunc:
+                    savefunc(path / (collection + '.zarr.zip'), data)
 
                 return_cubes[collection] = data
         return return_cubes

@@ -67,12 +67,32 @@ class STACProvider():
     def download_granules_to_file(self, href_path_tuples: list[tuple]):
         download_assets_parallel(href_path_tuples, signer=self.sign)
 
+    # def download_cube(self, parameters, split_by: int = None):
+    #     parameters.setdefault("patch_url", self.sign)
+
+    #     if split_by is not None and len(parameters['items']) > split_by:
+    #         p_copy = parameters.copy()
+    #         items = p_copy['items']
+    #         print('len items', len(items))
+    #         items = [items[i:i + split_by] for i in range(0, len(items), split_by)]
+    #         data = []
+    #         for item in items:
+    #             p_copy['items'] = item
+    #             data.append(self.__download_cube(p_copy))
+    #             print(data)
+    #         data = xr.concat(data, dim="time")
+    #         print(data)
+    #     else:
+    #         data = self.__download_cube(parameters)
+
+    #     return data
+
     def download_cube(self, parameters):
         parameters.setdefault("patch_url", self.sign)
         data = None
         for i in range(5):
             try:
-                data = load(**parameters).load()
+                data = load(**parameters)  # .load()
                 break
             except (WarpOperationError, RasterioIOError):
                 print(f"Error creating cube: retry {i}", flush=True)

@@ -2,6 +2,7 @@ import datetime
 import numpy as np
 import xarray as xr
 from shapely import transform, Polygon, box
+from pyproj import CRS
 
 from .base import STACItemProcessor, Band
 
@@ -127,20 +128,19 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 
         return created_box
 
-    def load_cube(self, items, bands, geobox, provider, path, savefunc, threshold=100, chunks: dict = None):
-        # split = True if len(items) > threshold else False
+    def load_cube(self, items, bands, geobox, provider, path, savefunc, split_by=100, chunks: dict = None):
+        # most of this until the s2 specific harmonization could be moved to the base class
 
-        # iterate over x items if larger than threshold
         # implement this in multiprocess?
 
-        if len(items) > threshold:
+        if len(items) > 100:
             raise Warning('large amount of assets, consider loading split in smaller time steps!')
 
         parameters = {
-            "items": items,
             "groupby": "solar_day",
             "fail_on_error": True,
         }
+
         if chunks:
             assert set(chunks.keys()) == {"time", "x", "y"}, "Chunks must contain the dimensions 'time', 'x', 'y'!"
             parameters['chunks'] = chunks
@@ -150,7 +150,6 @@ class Sentinel2L2AProcessor(STACItemProcessor):
             req_bands = set(band_subset) & set(bands)
             resampling = self.get_resampling_per_band(gb.resolution.x)
             dtypes = self.get_dtype_per_band(gb.resolution.x)
-
             resampling = {k: resampling[k] for k in req_bands if k in resampling}
             dtypes = {k: dtypes[k] for k in req_bands if k in dtypes}
 
@@ -158,7 +157,17 @@ class Sentinel2L2AProcessor(STACItemProcessor):
             parameters['geobox'] = gb
             parameters['resampling'] = resampling
             parameters['dtype'] = dtypes
-            cube = provider.download_cube(parameters)
+            if split_by is not None and len(items) > split_by:
+                split_items = self.split_items_keep_solar_days_together(items, split_by)
+                cube = []
+                for split in split_items:
+                    parameters['items'] = split
+                    cube.append(provider.download_cube(parameters))
+                cube = xr.concat(cube, dim="time")
+
+            else:
+                parameters['items'] = items
+                cube = provider.download_cube(parameters)
             attrs = self.get_band_attributes(req_bands)
             for band in cube.keys():
                 cube[band].attrs = attrs[band]
@@ -170,7 +179,8 @@ class Sentinel2L2AProcessor(STACItemProcessor):
         coarsest = max(multires_cube.keys())
         first_var = list(multires_cube[coarsest].data_vars.keys())[0]
         mean_over_time = multires_cube[coarsest][first_var].mean(dim=['x', 'y'])
-        mask_over_time = np.where(mean_over_time != 0)[0]
+        na_value = multires_cube[coarsest][first_var].attrs['NoData Value']
+        mask_over_time = np.where(mean_over_time != na_value)[0]
 
         chunking = {"time": 2 if not chunks else chunks['time']}
         for spat_res in multires_cube.keys():
@@ -183,25 +193,11 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 
         multires_cube = xr.merge(multires_cube.values())
 
-        # for band in attrs.keys():
-        #     multires_cube[band].attrs = attrs[band]
+        # mask by SCL?
+        # remove values time steps with no data per SCL layer?
 
         # this changes int16 to float32 could also be seen as different function
         multires_cube = self.harmonize_s2_data(multires_cube, scale=True)
-
-        # cube_attrs = {
-        #     'EPSG': self.get_crs,
-        #     'UTM Tile': tile,
-        #     'Bucket': tile + '_' + number,
-        #     'Creation Time': datetime.datetime.now().isoformat(),
-        # }
-        # multires_cube.attrs = {**base_attrs(), **cube_attrs}
-
-        # attributes = get_attributes('sentinel-2-l2a')
-        # data_atts = attributes.pop("data_attrs")
-        # band_attrs = get_band_attributes_s2(data_atts, multires_cube.data_vars.keys())
-
-        # multires_cube['SCL'].attrs = attributes['SCL']
 
         multires_cube = multires_cube.chunk(chunking)
 
@@ -270,12 +266,156 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 
         return new
 
-        # class Modis13Q1Processor(STACItemProcessor):
-        #     tilename = "modis:tile-id"
-        #     supported_bands = ["NDVI", "EVI", "VI_Quality"]
 
-        #     def get_crs(self):
-        #         return self.item.properties["proj:epsg"]
+class Modis13Q1Processor(STACItemProcessor):
+    tilename = "modis:tile-id"
+    datetime_id = "start_datetime"
 
-        #     def get_tile_id(self):
-        #         return self.item.properties[self.tilename]
+    indices = ["250m_16_days_NDVI",
+               "250m_16_days_EVI"]
+
+    reflectances = ["250m_16_days_MIR_reflectance",
+                    "250m_16_days_NIR_reflectance",
+                    "250m_16_days_red_reflectance",
+                    "250m_16_days_blue_reflectance"]
+
+    indices_bands = {
+        i :
+            Band(
+                name=i,
+                data_type='int16',
+                nodata_value=-3000,
+                spatial_resolution=250,
+                continuous_measurement=True,
+                # kwargs
+                scale_factor=0.0001,
+                valid_range=(-2000, 10000),
+            ) for i in indices
+    }
+
+    reflectance_bands = {
+        i :
+            Band(
+                name=i,
+                data_type='int16',
+                nodata_value=-1000,
+                spatial_resolution=250,
+                continuous_measurement=True,
+                # kwargs
+                scale_factor=0.0001,
+                valid_range=(0, 10000),
+            ) for i in reflectances
+    }
+
+    other_bands = {
+        "250m_16_days_VI_Quality" :
+            Band(
+                name="250m_16_days_VI_Quality",
+                data_type='uint16',
+                nodata_value=65535,
+                spatial_resolution=250,
+                continuous_measurement=True,
+                # kwargs
+                valid_range=(0, 65534)
+            ),
+        "250m_16_days_pixel_reliability" :
+            Band(
+                name="250m_16_days_pixel_reliability",
+                data_type='int16',
+                nodata_value=-1,
+                spatial_resolution=250,
+                continuous_measurement=False,
+                # kwargs
+                valid_range=(0, 3)
+            ),
+        "250m_16_days_relative_azimuth_angle" :
+            Band(
+                name="250m_16_days_relative_azimuth_angle",
+                data_type='int16',
+                nodata_value=-4000,
+                spatial_resolution=250,
+                continuous_measurement=True,
+                # kwargs
+                scale_factor=0.01,
+                valid_range=(-18000, 18000)
+            ),
+    }
+
+    special_bands = {**reflectance_bands, **indices_bands, **other_bands}
+    supported_bands = list(special_bands.keys())
+    raise NotImplementedError("Sentinel3SynergyProcessor is not implemented yet.")
+
+    def get_crs(self):
+        return CRS.from_wkt(self.item.properties['proj:wkt2'])
+
+    def get_tile_id(self):
+        return self.item.properties[self.tilename]
+
+    def get_bbox(self):
+        bbox = Polygon(self.item.properties['proj:geometry']['coordinates'][0])
+        tr = get_transform(CRS.from_wkt(self.item.asset.properties['proj:wkt2']), 4326)
+        return transform(bbox, tr)
+
+
+class ESAWorldCoverProcessor(STACItemProcessor):
+    tilename = "esa_worldcover:product_tile"
+
+    special_bands = {
+        "map":
+            Band(
+                name="map",
+                data_type="uint8",
+                nodata_value=0,
+                spatial_resolution=10,
+                continuous_measurement=False,
+                long_name="ESA WorldCover product 2020/2021",
+                flag_meanings=[
+                    "Tree cover",
+                    "Shrubland",
+                    "Grassland",
+                    "Cropland",
+                    "Built-up",
+                    "Bare / sparse vegetation",
+                    "Snow and ice",
+                    "Permanent water bodies",
+                    "Herbaceous wetland",
+                    "Mangroves",
+                    "Moss and lichen",
+                ],
+                flag_values=[10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+                metadata={
+                    "color_bar_name": "LC Class",
+                    "color_value_max": 100,
+                    "color_value_min": 10,
+                    "keywords": ["ESA WorldCover", "Classes"],
+                },
+            ),
+        "input_quality":
+            Band(
+                name="input_quality",
+                data_type="int16",
+                nodata_value=-1,
+                spatial_resolution=60,
+                continuous_measurement=False,
+                long_name="Input Quality Map"
+            )
+    }
+
+    supported_bands = list(special_bands.keys())
+    raise NotImplementedError("Sentinel3SynergyProcessor is not implemented yet.")
+
+    def get_crs(self):
+        return self.item.properties['proj:epsg']
+
+    def get_tilename_value(self):
+        return self.item.properties[self.tilename]
+
+    def get_bbox(self):
+        bbox = box(*self.item.bbox)
+        tr = get_transform(self.item.properties['proj:epsg'], 4326)
+        return transform(bbox, tr)
+
+
+class Sentinel3SynergyProcessor(STACItemProcessor):
+    tilename = None
+    raise NotImplementedError("Sentinel3SynergyProcessor is not implemented yet.")

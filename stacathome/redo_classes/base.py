@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from typing import Dict, Any
 
+from datetime import datetime, timedelta
 from pystac import Item
 from odc.geo.geobox import GeoBox
 
@@ -125,8 +126,67 @@ class STACItemProcessor(ABC):
         intersection = item_bbox.intersection(transformed_shape)
         return intersection.area / transformed_shape.area
 
+    def solarday_offset_seconds(self, item):
+        item_centroid = self.__class__(item).get_bbox().centroid
+        item_centroid = transform(item_centroid, get_transform(self.get_crs()), 4326)
+        longitude = item_centroid.x
+        return int(longitude / 15) * 3600
+
     def sort_items_by_datetime(self, items):
         return sorted(items, key=lambda x: x.properties[self.datetime_id])
+
+    def split_items_keep_solar_days_together(self, items, split_by):
+        """
+        Split items by solar day.
+        Args:
+            items (list): List of items to split.
+        Returns:
+            dict: Dictionary with solar days as keys and lists of items as values.
+        """
+        rounded_datetimes = []
+        for item in items:
+            # modify the datetime here to represent solar daytime (offset by time * longitude)
+            dt = datetime.fromisoformat(item.properties[self.datetime_id].replace('Z', ''))
+            dt += timedelta(seconds=self.solarday_offset_seconds(item))
+            rounded_datetimes.append(dt.replace(hour=0, minute=0, second=0, microsecond=0))
+
+        sorted_datetimes = sorted(rounded_datetimes)
+        ranks = [sorted_datetimes.index(dt) + 1 for dt in rounded_datetimes]
+
+        # Group elements by rank
+        rank_groups = defaultdict(list)
+        for index, rank in enumerate(ranks):
+            rank_groups[rank].append(index)
+
+        # Convert the rank groups to a list of lists
+        ranked_elements = list(rank_groups.values())
+
+        batches = self.split_into_batches(ranked_elements, split_by)
+
+        # Output the batches
+        split_items = []
+        for batch in batches:
+            split_items.append([items[i] for i in batch])
+        return split_items
+
+    @staticmethod
+    def split_into_batches(self, elements, batch_size):
+        batches = []
+        current_batch = []
+        current_size = 0
+
+        for group in elements:
+            if current_size + len(group) > batch_size:
+                batches.append(current_batch)
+                current_batch = []
+                current_size = 0
+            current_batch.extend(group)
+            current_size += len(group)
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
 
 
 @dataclass
