@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 from shapely import box
 
@@ -22,3 +23,7 @@ def create_utm_grid_bbox(bbox, grid_size=60):
     xmax_snapped = math.ceil(xmax / grid_size) * grid_size
     ymax_snapped = math.ceil(ymax / grid_size) * grid_size
     return box(xmin_snapped, ymin_snapped, xmax_snapped, ymax_snapped)
+
+
+def arange_bounds(bounds, step):
+    return np.arange(bounds[0], bounds[2], step), np.arange(bounds[1], bounds[3], step)

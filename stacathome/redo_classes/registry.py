@@ -1,12 +1,14 @@
 from stacathome.redo_classes.processors import (Sentinel2L2AProcessor,
                                                 Modis13Q1Processor,
                                                 ESAWorldCoverProcessor,
+                                                Sentinel1RTCProcessor,
                                                 Sentinel3SynergyProcessor)
 
 PROCESSOR_REGISTRY = {
     "sentinel-2-l2a": Sentinel2L2AProcessor,
     "modis-13Q1-061": Modis13Q1Processor,
     "esa-worldcover": ESAWorldCoverProcessor,
+    "sentinel-1-rtc": Sentinel1RTCProcessor,
     "sentinel-3-synergy-syn-l2-netcdf": Sentinel3SynergyProcessor,
 }
 

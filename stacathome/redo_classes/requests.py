@@ -1,3 +1,4 @@
+import os
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -41,7 +42,10 @@ class STACRequest():
             logging.warning(f"Some collections were not matched: {unmatched_collections}")
 
         self.request_place = request_place
-        self.request_time = parse_time(request_time)
+        if isinstance(request_time, dict):
+            self.request_time = {k: parse_time(v) for k, v in request_time.items()}
+        else:
+            self.request_time = parse_time(request_time)
 
         # will get a list of sensors, lat long or shape or bbox and time
         # finds the needed tiles for a given request by probing the STAC
@@ -52,13 +56,21 @@ class STACRequest():
         tile_ids_per_collection = {}
         for provider, collections in self.stac_providers.items():
             for collection in collections:
+                if isinstance(self.request_time, dict):
+                    req_time = self.request_time.get(collection, None)
+                    if req_time is None:
+                        logging.warning(f"No time found for {collection} in {self.request_place}")
+                        continue
+                else:
+                    req_time = self.request_time
+                print(req_time, flush=True)
                 items = provider.request_items(collection=collection,
-                                               request_time=self.request_time,
+                                               request_time=req_time,
                                                request_place=self.request_place,
                                                max_items=item_limit,
                                                max_retry=5)
                 if len(items) < item_limit:
-                    logging.warning(f"Not enough items found for {collection} in {self.request_place} "
+                    logging.warning(f"Less than {item_limit} items found for {collection} in {self.request_place} "
                                     f"and {self.request_time}")
 
                 by_tile = defaultdict(list)
@@ -98,14 +110,67 @@ class STACRequest():
                 tile_ids_per_collection[collection] = {'tile_id': tile_ids, 'geobox': geobox}
         return tile_ids_per_collection
 
+    def request_items_basic(self, **kwargs):
+        returned_items_per_collection = {}
+        for provider, collections in self.stac_providers.items():
+            for collection in collections:
+                if isinstance(self.request_time, dict):
+                    req_time = self.request_time.get(collection, None)
+                    if req_time is None:
+                        logging.warning(f"No time found for {collection} in {self.request_place}")
+                        continue
+                else:
+                    req_time = self.request_time
+                items = provider.request_items(collection=collection,
+                                               request_time=req_time,
+                                               request_place=self.request_place,
+                                               **kwargs)
+                if get_processor(items[0]).gridded:
+                    items = [i for i in items if get_processor(i).does_cover_data(self.request_place, input_crs=4326)]
+                else:
+                    items = [i for i in items]
+
+                logging.info(f"Found {len(items)} items for {collection}")
+                returned_items_per_collection[collection] = items
+        return returned_items_per_collection
+
+    def create_geoboxes(self, items: dict, item_limit=12):
+        tile_ids_per_collection = {}
+        for provider, collections in self.stac_providers.items():
+            for collection in collections:
+                collection_items = items[collection]
+                if len(collection_items) == 0:
+                    logging.warning(f"No items found for {collection} in {self.request_place} and {self.request_time}")
+                    continue
+                proc = get_processor(collection_items[0])
+                if not proc.gridded:
+                    logging.warning(f"Collection {collection} is not gridded, skipping geobox creation")
+                    continue
+
+                # if proc.tilename is None:
+                #     logging.warning(f"Collection {collection} has no tilename, skipping geobox creation")
+                #     continue
+
+                geobox = proc.get_geobox(self.request_place)
+
+                tile_ids_per_collection[collection] = geobox
+        return tile_ids_per_collection
+
     def request_items(self, tile_ids: dict = None, geobox: GeoBox = None, **kwargs):
         returned_items_per_collection = {}
         for provider, collections in self.stac_providers.items():
             for collection in collections:
+                if isinstance(self.request_time, dict):
+                    req_time = self.request_time.get(collection, None)
+                    if req_time is None:
+                        logging.warning(f"No time found for {collection} in {self.request_place}")
+                        continue
+                else:
+                    req_time = self.request_time
                 tile_id = tile_ids[collection]['tile_id']
                 filter_arg = get_tilename_key(collection)
                 items = provider.request_items(collection=collection,
-                                               request_time=self.request_time,
+                                               request_time=req_time,
                                                query={filter_arg: {'in': tile_id}},
                                                **kwargs)
 
@@ -140,19 +205,35 @@ class STACRequest():
             self,
             items: dict,
             geoboxes: dict,
+            subset_bands_per_collection: dict = None,
             path: Path = None,
             savefunc: callable = cube_to_zarr_zip,
             split_by: int = None,
             chunks: dict = None
     ):
+        if isinstance(path, str):
+            path = Path(path)
+
+        os.makedirs(path, exist_ok=True)
+
         return_cubes = {}
         for provider, collections in self.stac_providers.items():
             for collection in collections:
                 item = items[collection]
+                logging.info(f"Loading {len(item)} items for {collection} as cube")
                 bands = get_supported_bands(collection)
+                subset_bands = subset_bands_per_collection.get(collection, None)
+                if subset_bands:
+                    bands = [band for band in bands if band in subset_bands]
+                    if len(bands) == 0:
+                        logging.warning(f"No bands found for {collection} in {self.request_place} and {self.request_time}")
+                        continue
+
                 geobox = geoboxes[collection]['geobox']
 
                 proc = get_processor(item[0])
+                # if collection == 'modis-13Q1-061':
+                #     return geobox, proc, item
                 item = [i for i in item if get_processor(i).does_cover_data(box(*list(geobox.keys())[0].boundingbox))]
                 item = proc.sort_items_by_datetime(items=item)
                 # data = run_with_multiprocessing_and_return(
@@ -164,9 +245,65 @@ class STACRequest():
                 #     path=path,
                 #     savefunc=savefunc
                 # )
-                data = proc.load_cube(item, bands, geobox, provider, path, savefunc, split_by, chunks)
+                logging.debug(f"{len(item)} items for {collection} after filtering")
+                data = proc.load_cube(item, bands, geobox, provider, split_by, chunks)
 
                 if path and savefunc:
+                    savefunc(path / (collection + '.zarr.zip'), data)
+
+                return_cubes[collection] = data
+        return return_cubes
+
+    def load_cubes_basic(
+            self,
+            items: dict,
+            geoboxes: dict,
+            subset_bands_per_collection: dict = None,
+            path: Path = None,
+            savefunc: callable = cube_to_zarr_zip,
+            split_by: int = None,
+            chunks: dict = None
+    ):
+        return_cubes = {}
+        for provider, collections in self.stac_providers.items():
+            for collection in collections:
+                item = items[collection]
+                logging.info(f"Loading {len(item)} items for {collection} as cube")
+                bands = get_supported_bands(collection)
+
+                if subset_bands_per_collection:
+                    subset_bands = subset_bands_per_collection.get(collection, [])
+                    bands = [band for band in bands if band in subset_bands]
+                    if len(bands) == 0:
+                        logging.warning(f"No bands found for {collection} in {self.request_place} and {self.request_time}")
+                        continue
+
+                geobox = geoboxes.get(collection, None)
+                if geobox is None:
+                    logging.warning(f"No geobox found for {collection} in {self.request_place} and {self.request_time}")
+                    continue
+
+                proc = get_processor(item[0])
+                # if collection == 'modis-13Q1-061':
+                #     return geobox, proc, item
+                # item = [i for i in item if get_processor(i).does_cover_data(box(*list(geobox.keys())[0].boundingbox))]
+                item = proc.sort_items_by_datetime(items=item)
+                # data = run_with_multiprocessing_and_return(
+                #     proc.load_cube,
+                #     items=item,
+                #     bands=bands,
+                #     geobox=geobox,
+                #     provider=provider,
+                #     path=path,
+                #     savefunc=savefunc
+                # )
+                logging.debug(f"{len(item)} items for {collection} after filtering")
+                data = proc.load_cube(item, bands, geobox, provider, split_by, chunks)
+
+                if path and savefunc:
+                    if isinstance(path, str):
+                        path = Path(path)
+                    os.makedirs(path, exist_ok=True)
                     savefunc(path / (collection + '.zarr.zip'), data)
 
                 return_cubes[collection] = data
