@@ -130,6 +130,10 @@ class Sentinel2L2AProcessor(STACItemProcessor):
             )
     }
 
+    # def get_crs(self):
+
+    #     return self.item.properties['proj:code']
+
     def get_assets_as_bands(self):
         supported_bands_S2 = self.supported_bands
         present_bands = self.get_data_asset_keys()

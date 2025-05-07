@@ -45,7 +45,7 @@ class STACItemProcessor(ABC):
         return box(*self.item.bbox)
 
     def get_crs(self):
-        return self.item.properties['proj:epsg']
+        return int(self.item.properties['proj:code'].split(':')[-1])
 
     @abstractmethod
     def snap_bbox_to_grid(cls):

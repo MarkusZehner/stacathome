@@ -12,7 +12,7 @@ from collections import Counter
 import zarr
 import planetary_computer as pc
 from pyproj import Proj, Transformer
-from shapely import box, unary_union, transform, Point
+from shapely import box, unary_union, transform, Point, buffer
 
 
 def create_utm_grid_bbox(bbox, grid_size=60):
@@ -102,7 +102,7 @@ def download_assets_parallel(asset_list, max_workers=4, signer: callable = pc.si
 
 
 def cube_to_zarr_zip(path, data):
-    store = zarr.ZipStore(path, mode="x", compression=zipfile.ZIP_BZIP2)
+    store = zarr.storage.ZipStore(path, mode="x", compression=zipfile.ZIP_BZIP2)
     data.to_zarr(store, mode="w-", consolidated=True)
     store.close()
 
@@ -134,6 +134,17 @@ def merge_to_cover(items, target_shape):
             break
 
     return merged
+
+
+def metric_buffer(shape, distance: int, return_box=False, crs=4326):
+    shape_center = shape.centroid
+    crs_code = get_utm_crs_from_lon_lat(shape_center.x, shape_center.y)
+    shape = transform(shape, get_transform(crs, crs_code))
+    shape = transform(buffer(shape, distance=distance), get_transform(crs_code, crs))
+    if return_box:
+        return box(*shape.bounds)
+    else:
+        return shape
 
 
 def is_valid_partial_date_range(s):
