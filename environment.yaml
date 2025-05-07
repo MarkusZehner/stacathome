@@ -1,6 +1,3 @@
 dependencies:
   - uv
-  - libgdal
-  - proj
-  - hdf5
-  - hdf4
+  - libgdal-core
