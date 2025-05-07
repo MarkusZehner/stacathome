@@ -1,8 +1,39 @@
 [build-system]
-requires = ["setuptools", "pre-commit", "pytest"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stacathome"
+description = "The WeatherGenerator Dataloader Tool"
+readme = "README.md"
+version = "0.0.1"
+authors = [
+    { name = "EarthNet Team" }
+]
+
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    'GDAL',
+    'geopandas',
+    'netCDF4',
+    'numpy',
+    'odc-geo',
+    'odc-stac',
+    'pandas',
+    'planetary-computer',
+    'pyproj',
+    'pystac',
+    'pystac-client',
+    'rasterio',
+    'rioxarray',
+    'shapely',
+    'tqdm',
+    'xarray',
+    'zarr',
+]
+
 
 [tool.black]
 skip-string-normalization = true
 line-length = 120
-target-version = ["py37"]
+target-version = ["py311", "py312", "py313"]

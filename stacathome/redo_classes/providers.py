@@ -8,8 +8,7 @@ from pystac_client.exceptions import APIError
 from rasterio.errors import RasterioIOError, WarpOperationError
 
 
-from stacathome.asset_specs_class import download_assets_parallel
-# from base import STACItemProcessor
+from stacathome.redo_classes.generic_utils import download_assets_parallel
 
 logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production

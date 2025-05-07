@@ -10,9 +10,7 @@ import logging
 from .base import STACItemProcessor, Band
 
 
-from stacathome.utils import get_transform
-from stacathome.redo_classes.generic_utils import create_utm_grid_bbox, arange_bounds
-from stacathome.sentinel_2_utils import compute_scale_and_offset
+from stacathome.redo_classes.generic_utils import get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds
 
 logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production

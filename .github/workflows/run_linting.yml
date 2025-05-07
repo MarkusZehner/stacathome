@@ -3,7 +3,7 @@ name: Run Linting
 on:
   push:
     branches:
-      - main
+      - dev
     tags:  # ignores pushes to tags
   pull_request:
 
