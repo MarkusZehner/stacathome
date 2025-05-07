@@ -27,3 +27,12 @@ if __name__ == '__main__':
     geoboxes = request.create_geoboxes(items)
     cubes = request.load_cubes_basic(items, geoboxes,
                                      path=Path('/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_test2'))
+
+    # alternative with checking for tile names, does not work with sentinel-3 and -1
+    request = STACRequest(collections, p_boxed, time_ranges)
+    returned_items_per_collection = request.collect_covering_tiles_and_coverage()
+    requested_items = request.request_items(returned_items_per_collection)
+    cubes_split_loaded = request.load_cubes(requested_items, returned_items_per_collection,
+                                            subset_bands_per_collection=subset_bands,
+                                            split_by=150,
+                                            path=Path('/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_test2'))
