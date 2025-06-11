@@ -7,6 +7,9 @@ from pystac_client import Client
 from pystac_client.exceptions import APIError
 from rasterio.errors import RasterioIOError, WarpOperationError
 
+import asf_search
+from asf_search.download import download_urls
+
 
 from stacathome.redo_classes.generic_utils import download_assets_parallel
 
@@ -14,6 +17,44 @@ logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+
+class ASFProvider():
+
+    @staticmethod
+    def request_items(request_time, request_place, **kwargs):
+        # (collection=collection,
+        # request_time=req_time,
+        # request_place=self.request_place,
+        # **kwargs)
+        wkt = request_place.wkt
+        if '/' in request_time:
+            start_time, end_time = request_time.split('/')
+        else:
+            start_time = request_time
+            end_time = None
+
+        print(wkt)
+
+        results = asf_search.search(
+            start=start_time,
+            end=end_time,
+            intersectsWith=wkt,
+
+            **kwargs,
+            # maxResults=25)
+        )
+        return results
+
+    @staticmethod
+    def download_from_asf(urls, path):
+        download_urls(urls, path=path)
+
+    def create_cube(self, parameters):
+        data = load(**parameters)
+        if data is None:
+            raise ValueError("Failed to create cube")
+        return data
 
 
 class STACProvider():

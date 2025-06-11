@@ -1,16 +1,36 @@
+import os
+from collections import defaultdict
+from urllib import parse
 import math
 import datetime
 import numpy as np
 import xarray as xr
 from shapely import transform, Polygon, box
 from pyproj import CRS
+import asf_search
+from asf_search import Products
+
+from asf_search.download.file_download_type import FileDownloadType
+from asf_search.download import download_urls
+import pystac
+from pystac import Item
+from pystac.utils import str_to_datetime
+import rasterio
+from rasterio.env import Env
+
+# from rio_stac.stac import PROJECTION_EXT_VERSION, RASTER_EXT_VERSION, EO_EXT_VERSION
+from rio_stac.stac import (
+    get_dataset_geom,
+    get_projection_info,
+    get_raster_info,
+    bbox_to_geom,
+)
 
 import logging
 
-from .base import STACItemProcessor, Band
-
-
-from stacathome.redo_classes.generic_utils import get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds
+from stacathome.redo_classes.base import STACItemProcessor, ASFResultProcessor, Band
+from stacathome.redo_classes.generic_utils import (get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds,
+                                                   most_common, resolve_best_containing, merge_to_cover)
 
 logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production
@@ -18,14 +38,401 @@ logging.basicConfig(
 )
 
 
-class Sentinel1RTCProcessor(STACItemProcessor):
-    tilename = None
-    datetime_id = "datetime"
-    x = 'x'
-    y = 'y'
+class OPERASentinel1RTCProcessor(ASFResultProcessor):
+    dataset = "OPERA-S1"
+    processingLevel = "RTC"
+    platform = asf_search.PLATFORM.SENTINEL1
     gridded = True
 
     special_bands = {
+        "mask" :
+            Band(
+                name="mask",
+                data_type="uint8",
+                nodata_value=255,
+                spatial_resolution=30,
+                continuous_measurement=False,
+                flag_meanings=[
+                    "Valid sample not affected by layover or shadow",
+                    "Valid sample affected by shadow",
+                    "Valid sample affected by layover",
+                    "Valid sample affected by layover and shadow",
+                    "Invalid sample (fill value)",
+                ],
+                flag_values=[0, 1, 2, 3, 255],
+            ),
+    }
+    bands = {
+        "VV" :
+            Band(
+                name="VV",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        "VH" :
+            Band(
+                name="VH",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        # "iso" :
+        #     Band(
+        #         name="iso",
+        #         data_type="float32",
+        #         nodata_value=-32768,
+        #         spatial_resolution=30,
+        #         continuous_measurement=False,
+        #     ),
+        "incidence_angle" :
+            Band(
+                name="incidence_angle",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        "local_incidence_angle" :
+            Band(
+                name="local_incidence_angle",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        # "static-mask" :
+        #     Band(
+        #         name="static-mask",
+        #         data_type="float32",
+        #         nodata_value=-32768,
+        #         spatial_resolution=30,
+        #         continuous_measurement=False,
+        #     ),
+        "number_of_looks":
+            Band(
+                name="number_of_looks",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        "rtc_anf_gamma0_to_beta0":
+            Band(
+                name="rtc_anf_gamma0_to_beta0",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        "rtc_anf_gamma0_to_sigma0":
+            Band(
+                name="rtc_anf_gamma0_to_sigma0",
+                data_type="float32",
+                nodata_value=np.nan,
+                spatial_resolution=30,
+                continuous_measurement=True,
+            ),
+        # "static-iso" :
+        #     Band(
+        #         name="static-iso",
+        #         data_type="float32",
+        #         nodata_value=-32768,
+        #         spatial_resolution=30,
+        #         continuous_measurement=False,
+        #     ),
+    }
+
+    all_bands = bands | special_bands
+    supported_bands = list(all_bands.keys())
+
+    @classmethod
+    def download_tiles_to_file(cls, path, items, bands, processes=4):
+        dl_items = {}
+        bands = list(set(cls.supported_bands) & set(bands))
+        static_pre = 'https://datapool.asf.alaska.edu/RTC-STATIC/OPERA-S1/OPERA_L2_RTC-S1-STATIC_'
+        static_post = '_20140403_S1A_30_v1.0'
+        fileType = FileDownloadType.ALL_FILES
+
+        for i in items:
+            urls = []
+            dynamic_urls = i.get_urls(fileType)
+
+            for u in dynamic_urls:
+                for b in bands:
+                    if b in u:
+                        urls.append(u)
+
+            for b in bands:
+                if b not in ['VV', 'VH', 'mask']:
+                    file_type = '.tif'  # '.xml' if b == 'static-iso' else '.tif'
+                    filler = '_'  # '.' if b == 'static-iso' else '_'
+                    inc_url = (
+                        static_pre +
+                        i.properties['operaBurstID'].replace('_', '-') +
+                        static_post + filler + b  # .split('-')[1]
+                        + file_type)
+                    urls.append(inc_url)
+
+            dl_items[i] = urls
+
+        dl_items_flat = [item for sublist in dl_items.values() for item in sublist]
+        download_urls(dl_items_flat, path=path, processes=processes)
+
+        for k in dl_items.keys():
+            dl_items[k] = [os.path.join(path, os.path.split(parse.urlparse(paths).path)[1]) for paths in dl_items[k]]
+
+        # make stac items here? -> better own method to call from?
+        # dl_items = cls.generate_stac_items(dl_items)
+
+        return dl_items
+
+    @classmethod
+    def generate_stac_items(cls, items):
+        attrs_from_results = ['flightDirection', 'pathNumber',
+                              'processingLevel', 'url', 'startTime',
+                              'platform', 'orbit', 'sensor',
+                              'subswath', 'beamModeType', 'operaBurstID']
+
+        media_type = 'image/tiff'  # we could also use rio_stac.stac.get_media_type
+
+        collection = "OPERAS1Product"
+
+        # extensions = [
+        #     f"https://stac-extensions.github.io/projection/{PROJECTION_EXT_VERSION}/schema.json",
+        #     f"https://stac-extensions.github.io/raster/{RASTER_EXT_VERSION}/schema.json",
+        #     f"https://stac-extensions.github.io/eo/{EO_EXT_VERSION}/schema.json",
+        # ]
+        return_items = []
+        for i, paths in items.items():
+            meta_from_item = {a: i.properties[a] for a in attrs_from_results}
+            fileID = i.properties['fileID']
+
+            assets = [{
+                "name": filename.split('/')[-1].replace('.tif', '').split('v1.0_')[1],
+                "path": filename,
+                "href": None,
+                "role": "data",
+            } for filename in paths if filename.endswith('.tif')]
+
+            # for filename in paths:
+            #     if filename.endswith('.tif'):
+            #         print(filename)
+            #         print(filename.split('/')[-1].replace('.tif', ''))
+
+            # exit()
+            bboxes = []
+            proj_bboxes = []
+            pystac_assets = []
+
+            crs = []
+
+            for asset in assets:
+                with Env(GTIFF_SRS_SOURCE='EPSG'):  # CRS definition in the GTiff differs from EPSG:
+                    # WARNING:rasterio._env:CPLE_AppDefined in The definition of projected CRS EPSG:32653 got from GeoTIFF
+                    # keys is not the same as the one from the EPSG registry, which may cause issues during reprojection operations.
+                    # Set GTIFF_SRS_SOURCE configuration option to EPSG to use official parameters (overriding the ones from GeoTIFF keys),
+                    # or to GEOKEYS to use custom values from GeoTIFF keys and drop the EPSG code.
+
+                    # choosing between the two options gives different values in the image position after the 9th decimal place (lat lon)
+                    with rasterio.open(asset["path"]) as src_dst:
+                        # Get BBOX and Footprint
+                        crs_proj = get_projection_info(src_dst)['epsg']
+                        crs.append(crs_proj)
+                        proj_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1, geographic_crs=crs_proj)
+                        proj_bboxes.append(proj_geom["bbox"])
+                        # stac items geometry and bbox need to be in lat lon
+                        dataset_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1)  # , geographic_crs=crs_proj)
+                        bboxes.append(dataset_geom["bbox"])
+
+                        proj_info = {
+                            f"proj:{name}": value
+                            for name, value in get_projection_info(src_dst).items() if name in ['bbox', 'shape', 'transform']
+                        }
+
+                        raster_info = {
+                            "raster:bands": get_raster_info(src_dst, max_size=1024)
+                        }
+
+                        pystac_assets.append(
+                            (
+                                asset["name"],
+                                pystac.Asset(
+                                    href=asset["href"] or src_dst.name,
+                                    media_type=media_type,
+                                    extra_fields={
+                                        **proj_info,
+                                        **raster_info,
+                                    },
+                                    roles=asset["role"],
+                                ),
+                            )
+                        )
+
+            minx, miny, maxx, maxy = zip(*proj_bboxes)
+            proj_bbox = [min(minx), min(miny), max(maxx), max(maxy)]
+
+            minx, miny, maxx, maxy = zip(*bboxes)
+            bbox = [min(minx), min(miny), max(maxx), max(maxy)]
+
+            if len(set(crs)) > 1:
+                raise ValueError("Multiple CRS found in the assets")
+
+            meta_from_item['proj:code'] = crs[0]
+            meta_from_item['proj:bbox'] = proj_bbox
+
+            # item
+            item = pystac.Item(
+                id=fileID,
+                geometry=bbox_to_geom(bbox),
+                bbox=bbox,
+                collection=collection,
+                # stac_extensions=extensions,
+                datetime=str_to_datetime(meta_from_item['startTime']),
+                properties=meta_from_item,
+            )
+
+            # if we add a collection we MUST add a link
+            if collection:
+                item.add_link(
+                    pystac.Link(
+                        pystac.RelType.COLLECTION,
+                        meta_from_item['url'] or collection,
+                        media_type=pystac.MediaType.JSON,
+                    )
+                )
+            for key, asset in pystac_assets:
+                item.add_asset(key=key, asset=asset)
+
+            return_items.append(item)
+
+        return return_items
+
+    def get_bbox(self):
+        if isinstance(self.item, Item):
+            return box(*self.item.properties["proj:bbox"])
+        elif isinstance(self.item, Products.OPERAS1Product):
+            return box(*Polygon(self.item.geometry['coordinates'][0]).bounds)
+
+    def get_crs(self):
+        if isinstance(self.item, Item):
+            return self.item.properties['proj:code']
+        elif isinstance(self.item, Products.OPERAS1Product):
+            return 4236
+
+    def get_data_coverage_geometry(self):
+        if isinstance(self.item, Item):
+            return transform(Polygon(*self.item.geometry["coordinates"]), get_transform(4326, self.get_crs()))
+        elif isinstance(self.item, Products.OPERAS1Product):
+            return Polygon(self.item.geometry['coordinates'][0])
+
+    def sort_items_by_datetime(self, items):
+        if isinstance(items[0], Item):
+            datetime_id = 'startTime'
+        elif isinstance(items[0], Products.OPERAS1Product):
+            datetime_id = 'startTime'
+        return sorted(items, key=lambda x: x.properties[datetime_id])
+
+    def snap_bbox_to_grid(self, bbox, grid_size=30):
+        inherent_bbox = self.get_bbox()
+        inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
+        created_box = create_utm_grid_bbox(bbox.bounds, grid_size)
+        created_x, created_y = arange_bounds(created_box.bounds, grid_size)
+
+        # Determine the overlapping grid coordinates
+        shared_x = set(created_x) & set(inherent_x)
+        shared_y = set(created_y) & set(inherent_y)
+
+        if len(created_x) >= len(inherent_x):
+            overlap_x = created_x[(created_x >= min(inherent_x)) & (created_x <= max(inherent_x))]
+            overlap_y = created_y[(created_y >= min(inherent_y)) & (created_y <= max(inherent_y))]
+
+        else:
+            overlap_x = inherent_x[(inherent_x >= min(created_x)) & (inherent_x <= max(created_x))]
+            overlap_y = inherent_y[(inherent_y >= min(created_y)) & (inherent_y <= max(created_y))]
+
+        if len(shared_x) != len(overlap_x) or len(shared_y) != len(overlap_y):
+            raise ValueError("Grid of created box does not fully align with inherent grid")
+
+        return created_box
+
+    def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
+        if {'VV', 'VH', 'mask'} < set(bands):
+            logging.info('the current method does load static assets for each time step, for long time series just use VV, VH and mask bands!')
+        if len(items) > 100:
+            logging.warning('large amount of assets, consider loading split in smaller time steps!')
+
+        parameters = {
+            "groupby": "solar_day",
+            "fail_on_error": True,
+        }
+
+        if chunks:
+            assert set(chunks.keys()) == {"time", self.x, self.y}, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
+            parameters['chunks'] = chunks
+
+        multires_cube = {}
+        for gb, band_subset in geobox.items():
+            req_bands = set(band_subset) & set(bands)
+            if len(req_bands) == 0:
+                logging.warning(f'no bands found for {band_subset} in {bands}')
+                continue
+            resampling = self.get_resampling_per_band(gb.resolution.x)
+            dtypes = self.get_dtype_per_band(gb.resolution.x)
+            resampling = {k: resampling[k] for k in req_bands if k in resampling}
+            dtypes = {k: dtypes[k] for k in req_bands if k in dtypes}
+
+            parameters['bands'] = req_bands
+            parameters['geobox'] = gb
+            parameters['resampling'] = resampling
+            parameters['dtype'] = dtypes
+            if split_by is not None and len(items) > split_by:
+                split_items = self.split_items_keep_solar_days_together(items, split_by)
+                cube = []
+                for split in split_items:
+                    parameters['items'] = split
+                    cube.append(self.provider.create_cube(parameters))
+                cube = xr.concat(cube, dim="time")
+
+            else:
+                parameters['items'] = items
+                cube = self.provider.create_cube(parameters)
+            attrs = self.get_band_attributes(req_bands)
+            for band in cube.keys():
+                cube[band].attrs = attrs[band]
+
+            multires_cube[int(gb.resolution.x)] = cube
+
+        coarsest = max(multires_cube.keys())
+        first_var = list(multires_cube[coarsest].data_vars.keys())[0]
+        mean_over_time = multires_cube[coarsest][first_var].mean(dim=[self.x, self.y])
+        na_value = multires_cube[coarsest][first_var].attrs['_FillValue']
+        mask_over_time = np.where(mean_over_time != na_value)[0]
+
+        chunking = {"time": 2 if not chunks else chunks['time']}
+        for spat_res in multires_cube.keys():
+            # remove empty images, could be moved into separate function
+            multires_cube[spat_res] = multires_cube[spat_res].isel(time=mask_over_time)
+
+            chunking[f'x{spat_res}'] = -1 if not chunks else chunks[self.x]
+            chunking[f'y{spat_res}'] = -1 if not chunks else chunks[self.y]
+            multires_cube[spat_res] = multires_cube[spat_res].rename({self.x: f'x{spat_res}', self.y: f'y{spat_res}'})
+
+        multires_cube = xr.merge(multires_cube.values())
+
+        multires_cube = multires_cube.chunk(chunking)
+
+        return multires_cube
+
+
+class Sentinel1RTCProcessor(STACItemProcessor):
+    datetime_id = "datetime"
+    gridded = True
+
+    special_bands = {}
+    bands = {
         "vv" :
             Band(
                 name="vv",
@@ -61,7 +468,8 @@ class Sentinel1RTCProcessor(STACItemProcessor):
 
     }
 
-    supported_bands = list(special_bands.keys())
+    all_bands = bands | special_bands
+    supported_bands = list(all_bands.keys())
 
     def get_bbox(self):
         return box(*self.item.properties["proj:bbox"])
@@ -93,12 +501,15 @@ class Sentinel1RTCProcessor(STACItemProcessor):
         return created_box
 
 
+class LandsatC2L2Processor(STACItemProcessor):
+    pass
+
+
 class Sentinel2L2AProcessor(STACItemProcessor):
     tilename = "s2:mgrs_tile"
     datetime_id = "datetime"
-    x = 'x'
-    y = 'y'
     gridded = True
+    overlap = True
 
     supported_bands = [
         "B01", "B02", "B03", "B04", "B05", "B06",
@@ -129,10 +540,6 @@ class Sentinel2L2AProcessor(STACItemProcessor):
                 flag_values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             )
     }
-
-    # def get_crs(self):
-
-    #     return self.item.properties['proj:code']
 
     def get_assets_as_bands(self):
         supported_bands_S2 = self.supported_bands
@@ -185,6 +592,80 @@ class Sentinel2L2AProcessor(STACItemProcessor):
     def get_data_coverage_geometry(self):
         return transform(Polygon(*self.item.geometry["coordinates"]), get_transform(4326, self.get_crs()))
 
+    def collect_covering_tiles_and_coverage(self, request_place, item_limit=12, items=None, request_time=None):
+        # move this into the processor classes?
+        tile_ids_per_collection = {}
+        # for collection in self.collections:
+        # if isinstance(self.request_time, dict):
+        #     req_time = self.request_time.get(collection, None)
+        #     if req_time is None:
+        #         logging.warning(f"No time found for {collection} in {self.request_place}")
+        #         continue
+        # else:
+        #     req_time = self.request_time
+
+        if items is None and all([request_time is not None, request_place is not None]):
+            items = self.provider.request_items(
+                self.item.collection_id,
+                request_time=request_time,
+                request_place=request_place,
+                max_items=item_limit)
+
+            if items is None:
+                raise ValueError("No items found for the given request parameters.")
+        else:
+            filter = True
+
+        if len(items) < item_limit:
+            logging.warning(f"Less than {item_limit} items found for {self.item.collection_id} in {request_place} "
+                            f"and {request_time}")
+
+        collect_coverage_from = items[:min(len(items), item_limit)]
+
+        by_tile = defaultdict(list)
+
+        for i in collect_coverage_from:
+            item = self.__class__(i)
+            by_tile[item.get_tilename_value()].append([
+                item.get_crs(),
+                item.contains_shape(request_place),
+                item.centroid_distance_to(request_place),
+                item.overlap_percentage(request_place),
+                item.get_bbox(),
+            ])
+
+        # Reduce each group using majority voting
+        by_tile_filtered = [
+            [tile_id] + [most_common(attr) for attr in zip(*vals)]
+            for tile_id, vals in by_tile.items()
+        ]
+
+        # First, try finding a containing item
+        best = resolve_best_containing(by_tile_filtered)
+        if best:
+            found_tiles = [best]
+        else:
+            found_tiles = merge_to_cover(by_tile_filtered, request_place)
+
+        tile_ids = [t[0] for t in found_tiles]
+
+        # get one item with the same tile_id for the geobox
+        item = next(i
+                    for i in collect_coverage_from
+                    if self.__class__(i).get_tilename_value() == tile_ids[0])
+
+        geobox = self.__class__(item).get_geobox(request_place)
+
+        if filter:
+            filtered_items = [i for i in items if self.__class__(i).get_tilename_value() in tile_ids]
+
+        tile_ids_per_collection = {'tile_id': tile_ids, 'geobox': geobox}
+
+        if filter:
+            return [filtered_items, tile_ids_per_collection]
+        else:
+            return tile_ids_per_collection
+
     def snap_bbox_to_grid(self, bbox, grid_size=60):
         inherent_bbox = self.get_bbox()
         inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
@@ -208,7 +689,7 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 
         return created_box
 
-    def load_cube(self, items, bands, geobox, provider, split_by=100, chunks: dict = None):
+    def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
         # most of this until the s2 specific harmonization could be moved to the base class
 
         # implement this in multiprocess?
@@ -244,12 +725,12 @@ class Sentinel2L2AProcessor(STACItemProcessor):
                 cube = []
                 for split in split_items:
                     parameters['items'] = split
-                    cube.append(provider.download_cube(parameters))
+                    cube.append(self.provider.download_cube(parameters))
                 cube = xr.concat(cube, dim="time")
 
             else:
                 parameters['items'] = items
-                cube = provider.download_cube(parameters)
+                cube = self.provider.download_cube(parameters)
             attrs = self.get_band_attributes(req_bands)
             for band in cube.keys():
                 cube[band].attrs = attrs[band]
@@ -354,8 +835,6 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 class Modis13Q1Processor(STACItemProcessor):
     tilename = "modis:tile-id"
     datetime_id = "start_datetime"
-    x = 'x'
-    y = 'y'
     gridded = True
 
     indices = ["250m_16_days_NDVI",
@@ -428,8 +907,9 @@ class Modis13Q1Processor(STACItemProcessor):
             ),
     }
 
-    special_bands = {**reflectance_bands, **indices_bands, **other_bands}
-    supported_bands = list(special_bands.keys())
+    special_bands = {}
+    all_bands = reflectance_bands | indices_bands | other_bands | special_bands
+    supported_bands = list(all_bands.keys())
 
     def get_crs(self):
         return CRS.from_wkt(self.item.properties['proj:wkt2'])
@@ -513,6 +993,7 @@ class ESAWorldCoverProcessor(STACItemProcessor):
     }
 
     supported_bands = list(special_bands.keys())
+    all_bands = special_bands
 
     def snap_bbox_to_grid(self, bbox):
         pixel_size = 1 / 12000
@@ -539,11 +1020,11 @@ class ESAWorldCoverProcessor(STACItemProcessor):
 
 
 class Sentinel3SynergyProcessor(STACItemProcessor):
-    tilename = None
     datetime_id = "datetime"
     x = 'longitude'
     y = 'latitude'
     gridded = False
+    cubing = 'custom'
 
     keys = [
         'geolocation'
@@ -587,6 +1068,10 @@ class Sentinel3SynergyProcessor(STACItemProcessor):
 
     def get_crs(self):
         return 4326
+
+    @classmethod
+    def get_supported_bands(cls):
+        return cls.keys
 
     def get_data_coverage_geometry(self):
         return Polygon(*self.item.geometry["coordinates"])

@@ -37,10 +37,41 @@ def create_utm_grid_bbox(bbox, grid_size=60):
 
 
 def arange_bounds(bounds, step):
+    """
+    Creates two arrays from the bounds with given step size.
+
+    Parameters:
+    ----------
+    bounds : list
+        containing four float values [xmin, ymin, xmax, ymax]
+    step : float
+        the step size for the arrays
+
+    Returns:
+    -------
+    (list, list): 
+        Two arrays representing the x and y coordinates
+    """
     return np.arange(bounds[0], bounds[2], step), np.arange(bounds[1], bounds[3], step)
 
 
 def get_transform(from_crs, to_crs, always_xy=True):
+    """
+    Get a transformer function to convert coordinates from one CRS to another.
+    Parameters:
+    ----------
+    from_crs : int, str, or Proj
+        The source coordinate reference system (CRS) identifier or Proj object.
+    to_crs : int, str, or Proj
+        The target coordinate reference system (CRS) identifier or Proj object.
+    always_xy : bool, default True
+        If True, always treat the first coordinate as x and the second as y.
+        If False, the order depends on the CRS.
+    Returns:
+    -------
+    function
+        A function that takes a list of (x, y) tuples and transforms them from the source CRS to the target CRS.
+    """
     if isinstance(from_crs, int) or isinstance(from_crs, str) and len(from_crs) < 6:
         from_crs = Proj(f"epsg:{from_crs}")
     if isinstance(to_crs, int) or isinstance(to_crs, str) and len(to_crs) < 6:
@@ -51,19 +82,46 @@ def get_transform(from_crs, to_crs, always_xy=True):
         to_crs,
         always_xy=always_xy,
     )
-    return partial(transform_coords, project=project)
+    return partial(__transform_coords, project=project)
 
 
-def transform_coords(x_y, project):
+def __transform_coords(x_y: list[tuple[float, float]], project: Transformer):
+    """
+    Helper to get a transformer function to convert coordinates from one CRS to another.
+
+    Parameters:
+    ----------
+    x_y : list(tuple(float, float)
+        A list of tuples containing (x, y) coordinates to be transformed.
+    project : pyproj.Transformer
+        A pyproj Transformer object that defines the transformation from one CRS to another.
+    Returns:
+    -------
+    list(tuple(float, float))
+        A list of transformed (x, y) coordinates.
+    """
     for i in range(len(x_y)):
         x_y[i] = project.transform(x_y[i][0], x_y[i][1])
     return x_y
 
 
 def compute_scale_and_offset(da, n=16):
-    """Calculate offset and scale factor for int conversion
-
+    """
+    Calculate offset and scale factor for int conversion
+    (taken from vitus or claires codebase)
     Based on Krios101's code above.
+
+    Parameters:
+    ----------
+    da : xarray.DataArray
+        The data array for which to compute the scale and offset.
+    n : int, default 16
+        The number of bits to use for the packed representation.
+
+    Returns:
+    -------
+    float
+        The scale factor for converting the data array to a packed representation.
     """
 
     vmin = np.nanmin(da).item()
@@ -80,6 +138,31 @@ def compute_scale_and_offset(da, n=16):
 
 
 def get_asset(href: str, save_path: Path, signer: callable = pc.sign):
+    """
+    Get one asset from a given href and save it to the specified path.
+    This function will create the necessary directories if they do not exist,
+    and will skip downloading if the file already exists.
+    It also handles cleanup in case of an interruption during the download.
+
+    Parameters:
+    ----------
+    href : str
+        The URL of the asset to download.
+    save_path : Path
+        The local path where the asset should be saved.
+    signer : callable, default pc.sign
+        A function to sign the URL if needed (e.g., for accessing protected resources).
+
+    Returns:
+    -------
+    None
+
+    Raises:
+    -------
+    Exception: If there is an error during the download process.
+    KeyboardInterrupt: If the download is interrupted by the user.
+    SystemExit: If the download is interrupted by a system exit.
+    """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     if os.path.exists(save_path):
         return
@@ -96,22 +179,72 @@ def get_asset(href: str, save_path: Path, signer: callable = pc.sign):
 
 
 def download_assets_parallel(asset_list, max_workers=4, signer: callable = pc.sign):
+    """
+    Download a list of assets in parallel using a thread pool executor.
+    This function will create a partial function with the signer and then use
+    a thread pool to download each asset concurrently.
+
+    Parameters:
+    ----------
+    asset_list : list of tuples
+        A list where each tuple contains the href and the save path for the asset.
+        Example: [(href1, save_path1), (href2, save_path2), ...]
+    max_workers : int, default 4
+        The maximum number of worker threads to use for downloading.
+    signer : callable, default pc.sign
+        A function to sign the URL if needed (e.g., for accessing protected resources).
+
+    Returns:
+    -------
+    None
+    """
     get_asset_with_sign = partial(get_asset, signer=signer)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         executor.map(lambda args: get_asset_with_sign(*args), asset_list)
 
 
 def cube_to_zarr_zip(path, data):
-    store = zarr.storage.ZipStore(path, mode="x", compression=zipfile.ZIP_BZIP2)
-    data.to_zarr(store, mode="w-", consolidated=True)
+    """Stores a xarray DataArray or Dataset to a zarr zip file.
+
+    Parameters:
+    ----------
+    path : str or Path
+        The path where the zarr zip file will be saved.
+    data : xarray.Dataset
+    """
+    store = zarr.storage.ZipStore(path, mode="w", compression=zipfile.ZIP_BZIP2)
+    data.to_zarr(store, mode="w", consolidated=True)
     store.close()
 
 
 def most_common(lst):
+    """Returns the (first) most common element in a list.
+    Parameters:
+    ----------
+    lst : list
+        The list from which to find the most common element.
+    Returns:
+    -------
+    The most common element in the list.
+    """
     return Counter(lst).most_common(1)[0][0]
 
 
 def resolve_best_containing(items):
+    """helper to check coverage of satellite items with a given area.
+    items are tuples of (item_id, x, contains_flag, x, area, x).
+
+    Parameters:
+    ----------
+    items : list of tuples
+        Each tuple contains (item_id, x, contains_flag, x, area, x).
+        The `contains_flag` is a boolean indicating whether the item contains other items.
+    Returns:
+    -------
+    tuple or None
+        The item that contains the search area with the smallest distance between both centroids.
+    """
+
     containing = [i for i in items if i[2]]
     if not containing:
         return None
@@ -122,6 +255,23 @@ def resolve_best_containing(items):
 
 
 def merge_to_cover(items, target_shape):
+    """helper to check coverage of satellite items with a given area.
+
+    will merge items until the target shape is covered.
+    iterating over the items by descending instersection area with request.
+
+    Parameters:
+    ----------
+    items : list of tuples
+        Each tuple contains (item_id, crs, x, x, area, shapely.box).
+        The `contains_flag` is a boolean indicating whether the item contains other items.
+    target_shape : shapely.geometry.Polygon or shapely.geometry.box
+        The target shape to check for coverage.
+    Returns:
+    -------
+    list
+        A list of items that cover the target shape, sorted by their area in descending order.
+    """
     best_crs = max(items, key=lambda x: x[4])[1]
     candidates = sorted(items, key=lambda i: i[4], reverse=True)
     merged = []
@@ -132,11 +282,26 @@ def merge_to_cover(items, target_shape):
         merged_shapes.append(tr_shape)
         if unary_union(merged_shapes).contains(target_shape):
             break
-
     return merged
 
 
 def metric_buffer(shape, distance: int, return_box=False, crs=4326):
+    """creates a metric distance buffer around a shape.
+    This function transforms the shape to a UTM coordinate system based on its centroid,
+    applies a buffer of the specified distance, and then transforms it back to the original CRS.
+    If `return_box` is True, it returns a bounding box of the buffered shape.
+    If `return_box` is False, it returns the buffered shape itself.
+    Parameters:
+    ----------
+    shape (any) shapely geometry : 
+        The shape to buffer.
+    distance : int
+        The distance in meters to buffer the shape.
+    return_box : bool, optional
+        If True, returns a bounding box of the buffered shape. Defaults to False.
+    crs : int, optional
+        The coordinate reference system code to use for the transformation. Defaults to 4326.
+    """
     shape_center = shape.centroid
     crs_code = get_utm_crs_from_lon_lat(shape_center.x, shape_center.y)
     shape = transform(shape, get_transform(crs, crs_code))
@@ -148,6 +313,19 @@ def metric_buffer(shape, distance: int, return_box=False, crs=4326):
 
 
 def is_valid_partial_date_range(s):
+    """Regex to check if a string is a valid partial date range.
+    The string should be in the format YYYY-MM-DD/YYYY-MM-DD with optional month, day or second date.
+
+    Parameters:
+    ----------
+    s : str
+        The string to check.
+
+    Returns:
+    -------
+    bool
+        True if the string is a valid partial date range, False otherwise.
+    """
     pattern = r"^\d{4}(?:-\d{2}){0,2}(?:/\d{4}(?:-\d{2}){0,2})?$"
     return bool(re.match(pattern, s))
 
@@ -193,6 +371,22 @@ def parse_time(t_index: str | int | list | tuple | dict):
 
 
 def get_utm_crs_from_lon_lat(lon, lat):
+    """
+    Get the S2 UTM grid crs code based on longitude and latitude.
+    The S2 UTM grid has some pecularities in Norway and Svalbard,
+    which this function accounts for.
+
+    Parameters:
+    ----------
+    lon : float
+        The longitude in degrees.
+    lat : float
+        The latitude in degrees.
+    Returns:
+    -------
+    int
+        The EPSG code for the UTM CRS.
+    """
     utm_zone = int(np.floor(lon + 180) / 6) + 1
     # Handle Norway 32V anomaly
     if (56 <= lat < 64) and (3 <= lon < 6):
