@@ -13,7 +13,8 @@ authors = [
 
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    'GDAL',
+    'GDAL==3.11',
+    'pdal',
     'geopandas',
     'netCDF4',
     'numpy',
@@ -30,13 +31,18 @@ dependencies = [
     'tqdm',
     'xarray',
     'zarr~=2.18.7',
+    'asf_search',
+    'rio-stac',
+    'pyarrow',
 ]
 
 [project.optional-dependencies]
 dev = [
+    'jupyter',
     'ipykernel',
     'dask',
     'jinja2',
+    'matplotlib',
 ]
 
 

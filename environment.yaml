@@ -1,3 +1,6 @@
 dependencies:
   - uv
-  - libgdal-core
+  - cxx-compiler
+  - libgdal-core==3.11
+  - libpdal-core
+  - proj
