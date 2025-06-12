@@ -334,7 +334,7 @@ class STACItemProcessor(ABC):
         return int(self.item.properties['proj:code'].split(':')[-1])
 
     @abstractmethod
-    def snap_bbox_to_grid(cls):
+    def snap_bbox_to_grid(self, bbox):
         raise NotImplementedError
 
     # get_data_asset_keys

@@ -5,7 +5,8 @@ from stacathome.redo_classes.processors import (Sentinel2L2AProcessor,
                                                 ESAWorldCoverProcessor,
                                                 Sentinel1RTCProcessor,
                                                 Sentinel3SynergyProcessor,
-                                                OPERASentinel1RTCProcessor)
+                                                OPERASentinel1RTCProcessor,
+                                                LandsatC2L2Processor)
 
 PROCESSOR_REGISTRY_STAC = {
     "sentinel-2-l2a": Sentinel2L2AProcessor,
@@ -13,6 +14,8 @@ PROCESSOR_REGISTRY_STAC = {
     "esa-worldcover": ESAWorldCoverProcessor,
     "sentinel-1-rtc": Sentinel1RTCProcessor,
     "sentinel-3-synergy-syn-l2-netcdf": Sentinel3SynergyProcessor,
+    "landsat-c2-l2": LandsatC2L2Processor,
+
 }
 
 PROCESSOR_REGISTRY_ASF = {
