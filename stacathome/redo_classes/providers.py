@@ -10,6 +10,8 @@ from rasterio.errors import RasterioIOError, WarpOperationError
 import asf_search
 from asf_search.download import download_urls
 
+import earthaccess
+
 
 from stacathome.redo_classes.generic_utils import download_assets_parallel
 
@@ -17,6 +19,43 @@ logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+
+class EarthAccessProvider():
+    def __init__(
+            self
+    ):
+        earthaccess.login(persist=True)
+
+    def request_items(self, request_time: str, request_place, **kwargs):
+        bounds = request_place.bounds
+        if '/' in request_time:
+            start_time, end_time = request_time.split('/')
+        else:
+            raise ValueError('Earthaccess (probably) requires start and end time in form of yyyy-mm-dd/yyyy-mm-dd')
+            start_time = request_time
+            end_time = None
+
+        granules = earthaccess.search_data(
+            temporal=(start_time, end_time),
+            bounding_box=bounds,
+            **kwargs
+        )
+        return granules
+
+    @classmethod
+    def download_from_earthaccess(cls, granules, local_path, threads, **kwargs):
+        earthaccess.download(
+            granules,
+            local_path=local_path,
+            threads=threads,
+            **kwargs)
+
+    def create_cube(self, parameters):
+        data = load(**parameters)
+        if data is None:
+            raise ValueError("Failed to create cube")
+        return data
 
 
 class ASFProvider():
@@ -31,6 +70,7 @@ class ASFProvider():
         if '/' in request_time:
             start_time, end_time = request_time.split('/')
         else:
+            raise ValueError('ASF (probably) requires start and end time in form of yyyy-mm-dd/yyyy-mm-dd')
             start_time = request_time
             end_time = None
 
@@ -40,15 +80,13 @@ class ASFProvider():
             start=start_time,
             end=end_time,
             intersectsWith=wkt,
-
             **kwargs,
-            # maxResults=25)
         )
         return results
 
     @staticmethod
-    def download_from_asf(urls, path):
-        download_urls(urls, path=path)
+    def download_from_asf(urls, path, **kwargs):
+        download_urls(urls, path=path, **kwargs)
 
     def create_cube(self, parameters):
         data = load(**parameters)

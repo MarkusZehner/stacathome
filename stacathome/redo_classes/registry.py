@@ -1,12 +1,14 @@
 from pystac import Item
 from asf_search import Products
+from earthaccess.results import DataGranule
 from stacathome.redo_classes.processors import (Sentinel2L2AProcessor,
                                                 Modis13Q1Processor,
                                                 ESAWorldCoverProcessor,
                                                 Sentinel1RTCProcessor,
                                                 Sentinel3SynergyProcessor,
                                                 OPERASentinel1RTCProcessor,
-                                                LandsatC2L2Processor)
+                                                LandsatC2L2Processor,
+                                                ECOL2TLSTEProcessor)
 
 PROCESSOR_REGISTRY_STAC = {
     "sentinel-2-l2a": Sentinel2L2AProcessor,
@@ -22,7 +24,12 @@ PROCESSOR_REGISTRY_ASF = {
     "OPERAS1Product": OPERASentinel1RTCProcessor,
 }
 
-PROCESSOR_REGISTRY = PROCESSOR_REGISTRY_STAC | PROCESSOR_REGISTRY_ASF
+PROCESSOR_REGISTRY_EarthAccess = {
+    "ECO_L2T_LSTE.002": ECOL2TLSTEProcessor,
+}
+
+
+PROCESSOR_REGISTRY = PROCESSOR_REGISTRY_STAC | PROCESSOR_REGISTRY_ASF | PROCESSOR_REGISTRY_EarthAccess
 
 
 def get_supported_bands(dataset_key: str):
@@ -52,6 +59,10 @@ def get_processor(item):
         proc_cls = PROCESSOR_REGISTRY.get(item.collection_id, None)
     elif isinstance(item, Products.OPERAS1Product):
         proc_cls = PROCESSOR_REGISTRY.get(item.get_classname(), None)
+    elif isinstance(item, DataGranule):
+        c_ref = item['umm']['CollectionReference']
+        collection = c_ref['ShortName'] + '.' + c_ref['Version']
+        proc_cls = PROCESSOR_REGISTRY.get(collection, None)
     elif isinstance(item, str):
         proc_cls = PROCESSOR_REGISTRY.get(item, None)
     else:

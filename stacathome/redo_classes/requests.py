@@ -457,7 +457,7 @@ class STACRequest():
             # if collection == 'modis-13Q1-061':
             #     return geobox, proc, item
             # item = [i for i in item if get_processor(i).does_cover_data(box(*list(geobox.keys())[0].boundingbox))]
-            item = proc.sort_items_by_datetime(items=item)
+            # item = proc.sort_items_by_datetime(items=item)
             # data = run_with_multiprocessing_and_return(
             #     proc.load_cube,
             #     items=item,
@@ -501,4 +501,4 @@ class STACRequest():
 
 def stacathome_wrapper(area, time_range, collections, subset_bands, path_out, name_ident):
     request = STACRequest(collections, area, time_range, subset_bands)
-    request.get_data(path=path_out, name_ident=name_ident)
+    return request.get_data(path=path_out, name_ident=name_ident)

@@ -3,36 +3,231 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from typing import Dict, Any
 
+import re
 import logging
 import math
 from datetime import datetime, timedelta
 from pystac import Item
-import pystac
+# import pystac
+# from pystac.utils import str_to_datetime
 from odc.geo.geobox import GeoBox
 import numpy as np
-from pystac.utils import str_to_datetime
 import xarray as xr
 from shapely import transform, box  # , Polygon
-import rasterio
-from rasterio.env import Env
+# import rasterio
+# from rasterio.env import Env
 from asf_search import Products
 
+from earthaccess.results import DataGranule
+
 # from rio_stac.stac import PROJECTION_EXT_VERSION, RASTER_EXT_VERSION, EO_EXT_VERSION
-from rio_stac.stac import (
-    get_dataset_geom,
-    get_projection_info,
-    get_raster_info,
-    bbox_to_geom,
-)
+# from rio_stac.stac import (
+#     get_dataset_geom,
+#     get_projection_info,
+#     get_raster_info,
+#     bbox_to_geom,
+# )
 
 from stacathome.redo_classes.generic_utils import get_transform
-from stacathome.redo_classes.providers import STACProvider, ASFProvider
+from stacathome.redo_classes.providers import STACProvider, ASFProvider, EarthAccessProvider
 
 
 logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+
+class EarthAccessProcessor(ABC):
+    collection: str = ''
+    supported_bands: list = []
+    tilename: str = None
+    provider = EarthAccessProvider()
+    cubing = 'preferred'
+    overlap = False
+    gridded = False
+    x = 'x'
+    y = 'y'
+
+    def __init__(self, item: Item | DataGranule):
+        self.item = item
+        if isinstance(self.item, Item):
+            self.collection = item.collection_id
+        elif isinstance(self.item, DataGranule):
+            c_ref = item['umm']['CollectionReference']
+            self.collection = c_ref['ShortName'] + '.' + c_ref['Version']
+
+    @classmethod
+    def request_items(cls, _, request_time, request_place, max_items=-1, **kwargs):
+
+        if 'maxResults' in kwargs:
+            if max_items == -1:
+                max_items = kwargs['maxResults']
+            del kwargs['maxResults']
+
+        if '.' in cls.collection:
+            short_name, version = cls.collection.split('.')
+        else:
+            short_name = cls.collection
+            version = None
+
+        kwarg_dict = {
+            'short_name': short_name,
+            'version': version,
+            'count' : max_items,
+
+        }
+        kwargs = kwargs | kwarg_dict
+
+        return cls.provider.request_items(
+            request_time,
+            request_place,
+            **kwargs,
+        )
+
+    @classmethod
+    @abstractmethod
+    def download_tiles_to_file(cls, path, items, bands, processes=4):
+        raise NotImplementedError
+
+    @staticmethod
+    def filter_highest_version_links(links: dict, pattern=r"(.*_)(\d{2})$"):
+        filtered = {}
+        pattern = re.compile(pattern)
+
+        for item, link_list in links.items():
+            match = pattern.search(link_list[0].rsplit('/', 1)[0])
+            if match:
+                base = match.group(1)  # the part up to the version number
+                version = int(match.group(2))
+                # Keep the highest version
+                if base not in filtered or version > filtered[base][0]:
+                    filtered[base] = (version, item, link_list)
+        return {v[1]: v[2] for v in filtered.values()}
+
+    @classmethod
+    def get_supported_bands(cls):
+        return cls.supported_bands
+
+    @classmethod
+    def get_tilename_key(cls):
+        return cls.tilename
+
+    @abstractmethod
+    def snap_bbox_to_grid(self, bbox):
+        raise NotImplementedError
+
+    def get_assets_as_bands(self):
+        return self.all_bands.values()
+
+    def does_cover_data(self, request_box, input_crs=None):
+        if input_crs is not None:
+            request_box = transform(request_box, get_transform(input_crs, self.get_crs()))
+        return self.get_data_coverage_geometry().contains_properly(request_box)
+
+    @abstractmethod
+    def get_data_coverage_geometry(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_crs(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_bbox(self):
+        raise NotImplementedError
+
+    def get_geobox(self, bbox):
+        snapped_bbox = self.snap_bbox_to_grid(transform(bbox, get_transform(4326, self.get_crs())))
+        res = defaultdict(list)
+        for b in self.get_assets_as_bands():
+            res[GeoBox.from_bbox(snapped_bbox.bounds,
+                                 crs=self.get_crs(),
+                                 resolution=b.spatial_resolution)].append(b.name)
+        return dict(res)
+
+    @abstractmethod
+    def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
+        raise NotImplementedError
+
+    def get_resampling_per_band(self, target_resolution):
+        return {b.name: ("nearest"
+                         if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
+                         else "bilinear"
+                         if b.continuous_measurement
+                         else "mode") for b in self.get_assets_as_bands()}
+
+    def get_dtype_per_band(self, target_resolution):
+        resampling = self.get_resampling_per_band(target_resolution)
+        return {b.name: (b.data_type
+                         if resampling[b.name] == 'nearest'
+                         else "float32")
+                for b in self.get_assets_as_bands()}
+
+    def get_band_attributes(self, bands: list[str] | set[str]):
+        return {b: self.all_bands[b].to_dict() for b in bands if b in self.all_bands}
+
+    def solarday_offset_seconds(self, item):
+        item_centroid = self.__class__(item).get_bbox().centroid
+        item_centroid = transform(item_centroid, get_transform(self.get_crs(), 4326))
+        longitude = item_centroid.x
+        return int(longitude / 15) * 3600
+
+    def sort_items_by_datetime(self, items):
+        return sorted(items, key=lambda x: x.properties[self.datetime_id])
+
+    def split_items_keep_solar_days_together(self, items, split_by):
+        """
+        Split items by solar day.
+        Args:
+            items (list): List of items to split.
+        Returns:
+            dict: Dictionary with solar days as keys and lists of items as values.
+        """
+        rounded_datetimes = []
+        for item in items:
+            # modify the datetime here to represent solar daytime (offset by time * longitude)
+            dt = datetime.fromisoformat(item.properties[self.datetime_id].replace('Z', ''))
+            dt += timedelta(seconds=self.solarday_offset_seconds(item))
+            rounded_datetimes.append(dt.replace(hour=0, minute=0, second=0, microsecond=0))
+
+        sorted_datetimes = sorted(rounded_datetimes)
+        ranks = [sorted_datetimes.index(dt) + 1 for dt in rounded_datetimes]
+
+        # Group elements by rank
+        rank_groups = defaultdict(list)
+        for index, rank in enumerate(ranks):
+            rank_groups[rank].append(index)
+
+        # Convert the rank groups to a list of lists
+        ranked_elements = list(rank_groups.values())
+
+        batches = self.split_into_batches(ranked_elements, split_by)
+
+        # Output the batches
+        split_items = []
+        for batch in batches:
+            split_items.append([items[i] for i in batch])
+        return split_items
+
+    @staticmethod
+    def split_into_batches(elements, batch_size):
+        batches = []
+        current_batch = []
+        current_size = 0
+
+        for group in elements:
+            if current_size + len(group) > batch_size:
+                batches.append(current_batch)
+                current_batch = []
+                current_size = 0
+            current_batch.extend(group)
+            current_size += len(group)
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
 
 
 class ASFResultProcessor(ABC):
@@ -67,125 +262,6 @@ class ASFResultProcessor(ABC):
     def generate_stac_items(cls, items):
         raise NotImplementedError
 
-        attrs_from_results = ['flightDirection', 'pathNumber',
-                              'processingLevel', 'url', 'startTime',
-                              'platform', 'orbit', 'sensor',
-                              'subswath', 'beamModeType', 'operaBurstID']
-
-        media_type = 'image/tiff'  # we could also use rio_stac.stac.get_media_type
-
-        collection = "OPERAS1Product"
-
-        # extensions = [
-        #     f"https://stac-extensions.github.io/projection/{PROJECTION_EXT_VERSION}/schema.json",
-        #     f"https://stac-extensions.github.io/raster/{RASTER_EXT_VERSION}/schema.json",
-        #     f"https://stac-extensions.github.io/eo/{EO_EXT_VERSION}/schema.json",
-        # ]
-        return_items = []
-        for i, paths in items.items():
-            meta_from_item = {a: i.properties[a] for a in attrs_from_results}
-            fileID = i.properties['fileID']
-
-            assets = [{
-                "name": filename.split('/')[-1].replace('.tif', '').split('v1.0_')[1],
-                "path": filename,
-                "href": None,
-                "role": "data",
-            } for filename in paths if filename.endswith('.tif')]
-
-            # for filename in paths:
-            #     if filename.endswith('.tif'):
-            #         print(filename)
-            #         print(filename.split('/')[-1].replace('.tif', ''))
-
-            # exit()
-            bboxes = []
-            proj_bboxes = []
-            pystac_assets = []
-
-            crs = []
-
-            for asset in assets:
-                with Env(GTIFF_SRS_SOURCE='EPSG'):  # CRS definition in the GTiff differs from EPSG:
-                    # WARNING:rasterio._env:CPLE_AppDefined in The definition of projected CRS EPSG:32653 got from GeoTIFF
-                    # keys is not the same as the one from the EPSG registry, which may cause issues during reprojection operations.
-                    # Set GTIFF_SRS_SOURCE configuration option to EPSG to use official parameters (overriding the ones from GeoTIFF keys),
-                    # or to GEOKEYS to use custom values from GeoTIFF keys and drop the EPSG code.
-
-                    # choosing between the two options gives different values in the image position after the 9th decimal place (lat lon)
-                    with rasterio.open(asset["path"]) as src_dst:
-                        # Get BBOX and Footprint
-                        crs_proj = get_projection_info(src_dst)['epsg']
-                        crs.append(crs_proj)
-                        proj_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1, geographic_crs=crs_proj)
-                        proj_bboxes.append(proj_geom["bbox"])
-                        # stac items geometry and bbox need to be in lat lon
-                        dataset_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1)  # , geographic_crs=crs_proj)
-                        bboxes.append(dataset_geom["bbox"])
-
-                        proj_info = {
-                            f"proj:{name}": value
-                            for name, value in get_projection_info(src_dst).items() if name in ['bbox', 'shape', 'transform']
-                        }
-
-                        raster_info = {
-                            "raster:bands": get_raster_info(src_dst, max_size=1024)
-                        }
-
-                        pystac_assets.append(
-                            (
-                                asset["name"],
-                                pystac.Asset(
-                                    href=asset["href"] or src_dst.name,
-                                    media_type=media_type,
-                                    extra_fields={
-                                        **proj_info,
-                                        **raster_info,
-                                    },
-                                    roles=asset["role"],
-                                ),
-                            )
-                        )
-
-            minx, miny, maxx, maxy = zip(*proj_bboxes)
-            proj_bbox = [min(minx), min(miny), max(maxx), max(maxy)]
-
-            minx, miny, maxx, maxy = zip(*bboxes)
-            bbox = [min(minx), min(miny), max(maxx), max(maxy)]
-
-            if len(set(crs)) > 1:
-                raise ValueError("Multiple CRS found in the assets")
-
-            meta_from_item['proj:code'] = crs[0]
-            meta_from_item['proj:bbox'] = proj_bbox
-
-            # item
-            item = pystac.Item(
-                id=fileID,
-                geometry=bbox_to_geom(bbox),
-                bbox=bbox,
-                collection=collection,
-                # stac_extensions=extensions,
-                datetime=str_to_datetime(meta_from_item['startTime']),
-                properties=meta_from_item,
-            )
-
-            # if we add a collection we MUST add a link
-            if collection:
-                item.add_link(
-                    pystac.Link(
-                        pystac.RelType.COLLECTION,
-                        meta_from_item['url'] or collection,
-                        media_type=pystac.MediaType.JSON,
-                    )
-                )
-            for key, asset in pystac_assets:
-                item.add_asset(key=key, asset=asset)
-
-            return_items.append(item)
-
-        return return_items
-
     @classmethod
     def get_supported_bands(cls):
         return cls.supported_bands
@@ -197,6 +273,8 @@ class ASFResultProcessor(ABC):
     @classmethod
     def request_items(cls, _, request_time, request_place, max_items=None, **kwargs):
         if 'maxResults' in kwargs:
+            if max_items is None:
+                max_items = kwargs['maxResults']
             del kwargs['maxResults']
         return cls.provider.request_items(
             request_time,
@@ -209,7 +287,7 @@ class ASFResultProcessor(ABC):
         )
 
     @abstractmethod
-    def snap_bbox_to_grid(cls):
+    def snap_bbox_to_grid(self, bbox):
         raise NotImplementedError
 
     def get_assets_as_bands(self):
@@ -223,26 +301,14 @@ class ASFResultProcessor(ABC):
     @abstractmethod
     def get_data_coverage_geometry(self):
         raise NotImplementedError
-        # if isinstance(self.item, Item):
-        #     Polygon(self.item.properties.geometry['coordinates'][0])
-        # elif isinstance(self.item, Products.OPERAS1Product):
-        #     return Polygon(self.item.geometry['coordinates'][0])
 
     @abstractmethod
     def get_crs(self):
         raise NotImplementedError
-        # if isinstance(self.item, Item):
-        #     return self.item.properties['proj:code']
-        # elif isinstance(self.item, Products.OPERAS1Product):
-        #     return 4236
 
     @abstractmethod
     def get_bbox(self):
         raise NotImplementedError
-        # if isinstance(self.item, Item):
-        #     return box(*self.item.bbox)
-        # elif isinstance(self.item, Products.OPERAS1Product):
-        #     return box(*Polygon(self.item.geometry['coordinates'][0]).bounds)
 
     def get_geobox(self, bbox):
         snapped_bbox = self.snap_bbox_to_grid(transform(bbox, get_transform(4326, self.get_crs())))

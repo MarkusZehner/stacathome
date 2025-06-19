@@ -13,6 +13,20 @@ import zarr
 import planetary_computer as pc
 from pyproj import Proj, Transformer
 from shapely import box, unary_union, transform, Point, buffer
+from pystac import Item
+
+from datetime import timedelta
+
+
+def merge_item_datetime_by_timedelta(items: list[Item], max_t_diff: timedelta = None):
+    items_mod = items.copy()
+    if max_t_diff is None:
+        max_t_diff = timedelta(minutes=10)
+    t_diffs = np.diff([i.datetime for i in items])
+    for i, diff in enumerate(t_diffs):
+        if diff < max_t_diff:
+            items_mod[i + 1].datetime = items_mod[i].datetime
+    return items_mod
 
 
 def create_utm_grid_bbox(bbox, grid_size=60, offset_x=0, offset_y=0):
