@@ -21,6 +21,10 @@ logging.basicConfig(
 )
 
 
+class BaseProvider():
+    pass
+
+
 class EarthAccessProvider():
     def __init__(
             self

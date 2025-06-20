@@ -44,8 +44,8 @@ def create_utm_grid_bbox(bbox, grid_size=60, offset_x=0, offset_y=0):
     """
     xmin, ymin, xmax, ymax = bbox
     xmin_snapped = math.floor(xmin / grid_size) * grid_size + offset_x
-    ymin_snapped = math.floor(ymin / grid_size) * grid_size - offset_y
-    xmax_snapped = math.ceil(xmax / grid_size) * grid_size - offset_x
+    ymin_snapped = math.floor(ymin / grid_size) * grid_size + offset_y
+    xmax_snapped = math.ceil(xmax / grid_size) * grid_size + offset_x
     ymax_snapped = math.ceil(ymax / grid_size) * grid_size + offset_y
     return box(xmin_snapped, ymin_snapped, xmax_snapped, ymax_snapped)
 

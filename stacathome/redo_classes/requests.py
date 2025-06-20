@@ -1,10 +1,7 @@
 import os
 import logging
-from collections import defaultdict
 from pathlib import Path
 
-from shapely import box
-# from odc.geo.geobox import GeoBox
 
 # from stacathome.utils import run_with_multiprocessing_and_return
 from stacathome.redo_classes.registry import PROCESSOR_REGISTRY, get_supported_bands, get_processor, request_items, request_items_tile, get_tilename_key
@@ -23,7 +20,7 @@ class STACRequest():
         collections: list[str] | str,
         request_place: any,
         request_time: any,
-        request_bands: None,
+        request_bands=None,
     ):
         AVAIL_COLLECTIONS = set(PROCESSOR_REGISTRY.keys())
         # AVAIL_COLLECTIONS_STAC = set(PROCESSOR_REGISTRY_STAC.keys())
@@ -168,15 +165,14 @@ class STACRequest():
     # def tidy_up(self):
     #     pass
 
-    def get_data(self, path: Path, chunks: dict = None, name_ident=None):
+    def get_data(self, path: Path = None, chunks: dict = None, name_ident=None):
 
-        if not isinstance(path, Path):
+        if path is not None and path is not isinstance(path, Path):
             path = Path(path)
         # load data: load data to file, and to cube
         # depending on the processors setting:
         # cube (native per odc, preferred via pystac, userdefined if further steps are required e.g S3)
         items = self.request_items()
-
         items = self.filter_items(items)
 
         gboxes = {}

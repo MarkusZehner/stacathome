@@ -1,6 +1,6 @@
 import os
 import re
-import copy
+import logging
 from collections import defaultdict
 from urllib import parse
 import math
@@ -11,17 +11,13 @@ from shapely import transform, Polygon, box
 from pyproj import CRS
 import asf_search
 from asf_search import Products
-from earthaccess.results import DataGranule
-
 from asf_search.download.file_download_type import FileDownloadType
-# from asf_search.download import download_urls
+from earthaccess.results import DataGranule
 import pystac
 from pystac import Item
 from pystac.utils import str_to_datetime
 import rasterio
 from rasterio.env import Env
-
-# from rio_stac.stac import PROJECTION_EXT_VERSION, RASTER_EXT_VERSION, EO_EXT_VERSION
 from rio_stac.stac import (
     get_dataset_geom,
     get_projection_info,
@@ -29,7 +25,6 @@ from rio_stac.stac import (
     bbox_to_geom,
 )
 
-import logging
 
 from stacathome.redo_classes.base import STACItemProcessor, ASFResultProcessor, Band, EarthAccessProcessor
 from stacathome.redo_classes.generic_utils import (get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds,
@@ -41,8 +36,13 @@ logging.basicConfig(
 )
 
 
+def smallest_modulo_deviation(r, m):
+    r_mod = r % m
+    alt = r_mod - m
+    return alt if abs(alt) < abs(r_mod) else r_mod
+
+
 class ECOL2TLSTEProcessor(EarthAccessProcessor):
-    print('could the shift be from 01 or 02 processing iteration???')
     collection = "ECO_L2T_LSTE.002"
     datetime_id = 'startTime'
     cubing = 'preferred'
@@ -50,7 +50,6 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     overlap = True
 
     spatial_res = 70
-
     float32 = ['view_zenith', 'he_idht', 'LST', 'LST_err', 'EmisWB']
     uint16 = ['QC']
     uint8 = ['water', 'cloud']
@@ -138,10 +137,6 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
         else:
             granules_links = items
 
-        # print('filterung for product iteration')
-        # print('before', len(granules_links))
-        # granules_links = cls.filter_version_links(granules_links)
-        # print('after', len(granules_links))
         if bands:
             bands = [b + '.tif' for b in bands]
             for key in granules_links.keys():
@@ -296,11 +291,10 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     def snap_bbox_to_grid(self, bbox, grid_size=70):
         inherent_bbox = self.get_bbox()
         inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
-        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, min(inherent_x) % 70, -min(inherent_y) % 70)
+        off_x = smallest_modulo_deviation(min(inherent_x), grid_size)
+        off_y = smallest_modulo_deviation(min(inherent_y), grid_size)
+        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, off_x, off_y)
         created_x, created_y = arange_bounds(created_box.bounds, grid_size)
-
-        print(created_x[:5], inherent_x[:2], inherent_x[-2:])
-        print(created_y[:5], inherent_y[:2], inherent_y[-2:])
 
         # Determine the overlapping grid coordinates
         shared_x = set(created_x) & set(inherent_x)
@@ -330,13 +324,10 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
             logging.warning('large amount of assets, consider loading split in smaller time steps!')
 
         items = self.sort_items_by_datetime(items)
-        print('after sorting, before cubing')
-        print(items[0].properties[self.datetime_id])
-        print(items[-1].properties[self.datetime_id])
         # items = merge_item_datetime_by_timedelta(items)
 
         parameters = {
-            "groupby": "id",
+            "groupby": merge_item_datetime_by_timedelta,
             "fail_on_error": True,
         }
 
@@ -578,12 +569,6 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
                 "role": "data",
             } for filename in paths if filename.endswith('.tif')]
 
-            # for filename in paths:
-            #     if filename.endswith('.tif'):
-            #         print(filename)
-            #         print(filename.split('/')[-1].replace('.tif', ''))
-
-            # exit()
             bboxes = []
             proj_bboxes = []
             pystac_assets = []
@@ -1014,7 +999,7 @@ class LandsatC2L2Processor(STACItemProcessor):
     def snap_bbox_to_grid(self, bbox, grid_size=30):
         inherent_bbox = self.get_bbox()
         inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
-        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, 15, -15)
+        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, 15, 15)
         created_x, created_y = arange_bounds(created_box.bounds, grid_size)
 
         # Determine the overlapping grid coordinates
@@ -1286,7 +1271,9 @@ class Sentinel2L2AProcessor(STACItemProcessor):
     def snap_bbox_to_grid(self, bbox, grid_size=60):
         inherent_bbox = self.get_bbox()
         inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
-        created_box = create_utm_grid_bbox(bbox.bounds, grid_size)
+        off_x = smallest_modulo_deviation(min(inherent_x), grid_size)
+        off_y = smallest_modulo_deviation(min(inherent_y), grid_size)
+        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, off_x, off_y)
         created_x, created_y = arange_bounds(created_box.bounds, grid_size)
 
         # Determine the overlapping grid coordinates
@@ -1637,7 +1624,7 @@ class ESAWorldCoverProcessor(STACItemProcessor):
 
 
 class Sentinel3SynergyProcessor(STACItemProcessor):
-    print('adapt the get_data_granules of sentinel_3 to include the folder, otherwise time steps overwrite each other!')
+    # print('adapt the get_data_granules of sentinel_3 to include the folder, otherwise time steps overwrite each other!')
     datetime_id = "datetime"
     x = 'longitude'
     y = 'latitude'
