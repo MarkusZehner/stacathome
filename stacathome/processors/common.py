@@ -455,14 +455,8 @@ class STACItemProcessor(ABC):
     def snap_bbox_to_grid(self, bbox):
         raise NotImplementedError
 
-    # get_data_asset_keys
-
     def get_data_coverage_geometry(self):
         return self.get_bbox()
-
-    # @abstractmethod
-    # def get_datetime_property_id(self):
-    #     raise NotImplementedError
 
     def centroid_distance_to(self, shape, shape_crs=4326):
         """

@@ -101,14 +101,6 @@ class Sentinel2L2AProcessor(STACItemProcessor):
     def collect_covering_tiles_and_coverage(self, request_place, item_limit=12, items=None, request_time=None):
         # move this into the processor classes?
         tile_ids_per_collection = {}
-        # for collection in self.collections:
-        # if isinstance(self.request_time, dict):
-        #     req_time = self.request_time.get(collection, None)
-        #     if req_time is None:
-        #         logging.warning(f"No time found for {collection} in {self.request_place}")
-        #         continue
-        # else:
-        #     req_time = self.request_time
 
         if items is None and all([request_time is not None, request_place is not None]):
             items = self.provider.request_items(

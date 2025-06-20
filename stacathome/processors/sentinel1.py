@@ -147,9 +147,6 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
         for k in dl_items.keys():
             dl_items[k] = [os.path.join(path, os.path.split(parse.urlparse(paths).path)[1]) for paths in dl_items[k]]
 
-        # make stac items here? -> better own method to call from?
-        # dl_items = cls.generate_stac_items(dl_items)
-
         return dl_items
 
     @classmethod
@@ -163,11 +160,6 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
 
         collection = "OPERAS1Product"
 
-        # extensions = [
-        #     f"https://stac-extensions.github.io/projection/{PROJECTION_EXT_VERSION}/schema.json",
-        #     f"https://stac-extensions.github.io/raster/{RASTER_EXT_VERSION}/schema.json",
-        #     f"https://stac-extensions.github.io/eo/{EO_EXT_VERSION}/schema.json",
-        # ]
         return_items = []
         for i, paths in items.items():
             meta_from_item = {a: i.properties[a] for a in attrs_from_results}
@@ -242,15 +234,12 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
 
             meta_from_item_startTime = str_to_datetime(meta_from_item['startTime'])
 
-            # del meta_from_item['startTime']
-
             # item
             item = pystac.Item(
                 id=file_id,
                 geometry=bbox_to_geom(bbox),
                 bbox=bbox,
                 collection=collection,
-                # stac_extensions=extensions,
                 datetime=meta_from_item_startTime,
                 properties=meta_from_item,
             )

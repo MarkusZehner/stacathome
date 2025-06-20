@@ -15,11 +15,6 @@ import earthaccess
 
 from stacathome.generic_utils import download_assets_parallel
 
-logging.basicConfig(
-    level=logging.INFO,  # Set to WARNING or ERROR in production
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 class BaseProvider():
     pass
@@ -67,19 +62,11 @@ class ASFProvider():
 
     @staticmethod
     def request_items(request_time, request_place, **kwargs):
-        # (collection=collection,
-        # request_time=req_time,
-        # request_place=self.request_place,
-        # **kwargs)
         wkt = request_place.wkt
         if '/' in request_time:
             start_time, end_time = request_time.split('/')
         else:
             raise ValueError('ASF (probably) requires start and end time in form of yyyy-mm-dd/yyyy-mm-dd')
-            start_time = request_time
-            end_time = None
-
-        print(wkt)
 
         results = asf_search.search(
             start=start_time,
@@ -111,7 +98,6 @@ class STACProvider():
         self.sign = sign
         self.client = Client.open(self.url)
         self.extra_attributes = kwargs
-        # self.query = None
 
         # possible to add checks if cql2 filter, which collections are present...
         # should the classes have a default pipe-through if all their functions if all kwargs are matching?
@@ -149,26 +135,6 @@ class STACProvider():
 
     def download_granules_to_file(self, href_path_tuples: list[tuple]):
         download_assets_parallel(href_path_tuples, signer=self.sign)
-
-    # def download_cube(self, parameters, split_by: int = None):
-    #     parameters.setdefault("patch_url", self.sign)
-
-    #     if split_by is not None and len(parameters['items']) > split_by:
-    #         p_copy = parameters.copy()
-    #         items = p_copy['items']
-    #         print('len items', len(items))
-    #         items = [items[i:i + split_by] for i in range(0, len(items), split_by)]
-    #         data = []
-    #         for item in items:
-    #             p_copy['items'] = item
-    #             data.append(self.__download_cube(p_copy))
-    #             print(data)
-    #         data = xr.concat(data, dim="time")
-    #         print(data)
-    #     else:
-    #         data = self.__download_cube(parameters)
-
-    #     return data
 
     def download_cube(self, parameters):
         parameters.setdefault("patch_url", self.sign)

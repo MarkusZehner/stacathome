@@ -6,7 +6,6 @@ from .common import STACItemProcessor
 
 
 class Sentinel3SynergyProcessor(STACItemProcessor):
-    # print('adapt the get_data_granules of sentinel_3 to include the folder, otherwise time steps overwrite each other!')
     datetime_id = "datetime"
     x = 'longitude'
     y = 'latitude'
@@ -18,10 +17,6 @@ class Sentinel3SynergyProcessor(STACItemProcessor):
         'syn-amin',
         'syn-flags',
         'syn-ato550',
-        # 'tiepoints-olci',
-        # 'tiepoints-meteo',
-        # 'tiepoints-slstr-n',
-        # 'tiepoints-slstr-o',
         'syn-angstrom-exp550',
         'syn-s1n-reflectance',
         'syn-s1o-reflectance',
@@ -49,8 +44,6 @@ class Sentinel3SynergyProcessor(STACItemProcessor):
         'syn-oa17-reflectance',
         'syn-oa18-reflectance',
         'syn-oa21-reflectance',
-        # 'syn-sdr-removed-pixels',
-        # 'annotations-removed-pixels'
     ]
 
     def get_crs(self):
