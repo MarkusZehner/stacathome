@@ -29,7 +29,8 @@ class EarthAccessProvider():
     def __init__(
             self
     ):
-        earthaccess.login(persist=True)
+        pass
+        #earthaccess.login(persist=True)
 
     def request_items(self, request_time: str, request_place, **kwargs):
         bounds = request_place.bounds

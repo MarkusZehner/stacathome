@@ -18,6 +18,12 @@ from pystac import Item
 from datetime import timedelta
 
 
+def smallest_modulo_deviation(r, m):
+    r_mod = r % m
+    alt = r_mod - m
+    return alt if abs(alt) < abs(r_mod) else r_mod
+
+
 def merge_item_datetime_by_timedelta(items: list[Item], max_t_diff: timedelta = None):
     items_mod = items.copy()
     if max_t_diff is None:
