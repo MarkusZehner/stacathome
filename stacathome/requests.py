@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 # from stacathome.utils import run_with_multiprocessing_and_return
-from stacathome.redo_classes.registry import PROCESSOR_REGISTRY, get_supported_bands, get_processor, request_items, request_items_tile, get_tilename_key
-from stacathome.redo_classes.generic_utils import parse_time, most_common, resolve_best_containing, merge_to_cover, cube_to_zarr_zip
+from stacathome.registry import PROCESSOR_REGISTRY, get_supported_bands, get_processor, request_items, request_items_tile, get_tilename_key
+from stacathome.generic_utils import parse_time, most_common, resolve_best_containing, merge_to_cover, cube_to_zarr_zip
 
 
 logging.basicConfig(

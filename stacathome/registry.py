@@ -1,7 +1,7 @@
 from pystac import Item
 from asf_search import Products
 from earthaccess.results import DataGranule
-from stacathome.redo_classes.processors import (Sentinel2L2AProcessor,
+from stacathome.processors import (Sentinel2L2AProcessor,
                                                 Modis13Q1Processor,
                                                 ESAWorldCoverProcessor,
                                                 Sentinel1RTCProcessor,

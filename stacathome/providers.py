@@ -13,7 +13,7 @@ from asf_search.download import download_urls
 import earthaccess
 
 
-from stacathome.redo_classes.generic_utils import download_assets_parallel
+from stacathome.generic_utils import download_assets_parallel
 
 logging.basicConfig(
     level=logging.INFO,  # Set to WARNING or ERROR in production

@@ -26,8 +26,8 @@ from rio_stac.stac import (
 )
 
 
-from stacathome.redo_classes.base import STACItemProcessor, ASFResultProcessor, Band, EarthAccessProcessor
-from stacathome.redo_classes.generic_utils import (get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds,
+from stacathome.base import STACItemProcessor, ASFResultProcessor, Band, EarthAccessProcessor
+from stacathome.generic_utils import (get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds,
                                                    most_common, resolve_best_containing, merge_to_cover, merge_item_datetime_by_timedelta)
 
 logging.basicConfig(

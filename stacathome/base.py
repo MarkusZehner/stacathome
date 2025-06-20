@@ -13,8 +13,8 @@ from shapely import transform, box
 from asf_search import Products
 from earthaccess.results import DataGranule
 
-from stacathome.redo_classes.generic_utils import get_transform
-from stacathome.redo_classes.providers import STACProvider, ASFProvider, EarthAccessProvider
+from stacathome.generic_utils import get_transform
+from stacathome.providers import STACProvider, ASFProvider, EarthAccessProvider
 
 
 logging.basicConfig(
