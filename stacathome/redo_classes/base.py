@@ -48,6 +48,8 @@ class EarthAccessProcessor(ABC):
     gridded = False
     x = 'x'
     y = 'y'
+    datetime_id = ''
+    all_bands = {}
 
     def __init__(self, item: Item | DataGranule):
         self.item = item
@@ -91,19 +93,29 @@ class EarthAccessProcessor(ABC):
         raise NotImplementedError
 
     @staticmethod
-    def filter_highest_version_links(links: dict, pattern=r"(.*_)(\d{2})$"):
+    def filter_product_iteration_links(data_granules: list):
         filtered = {}
-        pattern = re.compile(pattern)
+        for granule in data_granules:
+            native_id = granule['meta']['native-id']
+            base_name = native_id[:-3]
+            product_iteration = int(native_id[-2])
+            if base_name not in filtered or product_iteration > filtered[base_name][0]:
+                filtered[base_name] = (product_iteration, granule)
+        return [v[1] for v in filtered.values()]
 
-        for item, link_list in links.items():
-            match = pattern.search(link_list[0].rsplit('/', 1)[0])
-            if match:
-                base = match.group(1)  # the part up to the version number
-                version = int(match.group(2))
-                # Keep the highest version
-                if base not in filtered or version > filtered[base][0]:
-                    filtered[base] = (version, item, link_list)
-        return {v[1]: v[2] for v in filtered.values()}
+    # @staticmethod
+    # def filter_version_links(links: list, pattern=r"(.*_)(\d{2})$"):
+    #     filtered = {}
+    #     pattern = re.compile(pattern)
+
+    #     for item, link_list in links.items():
+    #         match = pattern.search(link_list[0].rsplit('/', 1)[0])
+    #         if match:
+    #             base = match.group(1)
+    #             version = int(match.group(2))
+    #             if base not in filtered or version > filtered[base][0]:
+    #                 filtered[base] = (version, item, link_list)
+    #     return {v[1]: v[2] for v in filtered.values()}
 
     @classmethod
     def get_supported_bands(cls):
@@ -229,6 +241,18 @@ class EarthAccessProcessor(ABC):
 
         return batches
 
+    def centroid_distance_to(self, shape, shape_crs=4326):
+        """
+        Calculate the distance from the item's centroid to a given shape within the crs of the item.
+        Args:
+            shape (Polygon): The shape to calculate the distance to.
+        Returns:
+            float: The distance from the item's centroid to the shape.
+        """
+        item_centroid = self.get_bbox().centroid
+        transformed_shape = transform(shape, get_transform(shape_crs, self.get_crs()))
+        return item_centroid.distance(transformed_shape.centroid)
+
 
 class ASFResultProcessor(ABC):
     # Class-level info — override in subclass
@@ -244,6 +268,8 @@ class ASFResultProcessor(ABC):
     provider = ASFProvider()
     x = 'x'
     y = 'y'
+    datetime_id = ''
+    all_bands = {}
 
     def __init__(self, item: Item | Products.OPERAS1Product):
         self.item = item
@@ -340,6 +366,65 @@ class ASFResultProcessor(ABC):
     def get_band_attributes(self, bands: list[str] | set[str]):
         return {b: self.all_bands[b].to_dict() for b in bands if b in self.all_bands}
 
+    def solarday_offset_seconds(self, item):
+        item_centroid = self.__class__(item).get_bbox().centroid
+        item_centroid = transform(item_centroid, get_transform(self.get_crs(), 4326))
+        longitude = item_centroid.x
+        return int(longitude / 15) * 3600
+
+    def split_items_keep_solar_days_together(self, items, split_by):
+        """
+        Split items by solar day.
+        Args:
+            items (list): List of items to split.
+        Returns:
+            dict: Dictionary with solar days as keys and lists of items as values.
+        """
+        rounded_datetimes = []
+        for item in items:
+            # modify the datetime here to represent solar daytime (offset by time * longitude)
+            dt = datetime.fromisoformat(item.properties[self.datetime_id].replace('Z', ''))
+            dt += timedelta(seconds=self.solarday_offset_seconds(item))
+            rounded_datetimes.append(dt.replace(hour=0, minute=0, second=0, microsecond=0))
+
+        sorted_datetimes = sorted(rounded_datetimes)
+        ranks = [sorted_datetimes.index(dt) + 1 for dt in rounded_datetimes]
+
+        # Group elements by rank
+        rank_groups = defaultdict(list)
+        for index, rank in enumerate(ranks):
+            rank_groups[rank].append(index)
+
+        # Convert the rank groups to a list of lists
+        ranked_elements = list(rank_groups.values())
+
+        batches = self.split_into_batches(ranked_elements, split_by)
+
+        # Output the batches
+        split_items = []
+        for batch in batches:
+            split_items.append([items[i] for i in batch])
+        return split_items
+
+    @staticmethod
+    def split_into_batches(elements, batch_size):
+        batches = []
+        current_batch = []
+        current_size = 0
+
+        for group in elements:
+            if current_size + len(group) > batch_size:
+                batches.append(current_batch)
+                current_batch = []
+                current_size = 0
+            current_batch.extend(group)
+            current_size += len(group)
+
+        if current_batch:
+            batches.append(current_batch)
+
+        return batches
+
 
 class STACItemProcessor(ABC):
     # Class-level info — override in subclass
@@ -350,6 +435,8 @@ class STACItemProcessor(ABC):
     provider = STACProvider()
     x = 'x'
     y = 'y'
+    datetime_id = ''
+    all_bands = {}
 
     def __init__(self, item: Item):
         self.item = item

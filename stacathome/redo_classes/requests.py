@@ -184,11 +184,14 @@ class STACRequest():
         for collection in self.collections:
             proc_cls = get_processor(collection)
 
+            paths = None
             if proc_cls.cubing in ['preferred', 'custom']:
                 paths = self.download_tiles(path, items, collection)
 
             if proc_cls.cubing in ['preferred']:
                 items[collection] = self.create_stac_items(paths, collection)[collection]
+
+            # return items
 
             if proc_cls.cubing in ['native', 'preferred']:
                 most_common_crs = most_common([get_processor(i).get_crs() for i in items[collection]])

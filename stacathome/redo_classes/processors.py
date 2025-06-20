@@ -45,11 +45,13 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     print('could the shift be from 01 or 02 processing iteration???')
     collection = "ECO_L2T_LSTE.002"
     datetime_id = 'startTime'
-    cubing = 'custom'
+    cubing = 'preferred'
+    gridded = True
+    overlap = True
 
     spatial_res = 70
 
-    float32 = ['view_zenith', 'height', 'LST', 'LST_err', 'EmisWB']
+    float32 = ['view_zenith', 'he_idht', 'LST', 'LST_err', 'EmisWB']
     uint16 = ['QC']
     uint8 = ['water', 'cloud']
     float32_bands = {}
@@ -85,11 +87,61 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     all_bands = float32_bands | uint16_bands | uint8_bands
     supported_bands = list(all_bands.keys())
 
+    def collect_covering_tiles_and_coverage(self, request_place, items):
+        """
+        to be called with the data granule
+        use name info in granule to narrow down which data fits the request. 
+
+        utm tile is in the name, but extent has to be drawn from the file metadata
+
+        returns the filtered items sorted starting with the most covering tile
+        """
+        if not isinstance(self.item, dict):
+            raise TypeError('expected item of type dict containing {DataGranule: [links]}!')
+
+        items = self.filter_product_iteration_links(items)
+
+        filtered_dict = {}
+        for i in items:
+            bbox = ECOL2TLSTEProcessor(i).get_bbox()
+            mgrs_id = i['meta']['native-id'].split('_')[5]
+
+            if mgrs_id not in filtered_dict:
+                # maybe add overlap to remove not needed tiles even further
+                filtered_dict[mgrs_id] = bbox.centroid.distance(request_place.centroid)
+
+        min_dist_utm_code = min(filtered_dict)
+        min_dist = filtered_dict[min_dist_utm_code]
+
+        minx, miny, maxx, maxy = request_place.bounds
+
+        # Compute edge lengths
+        width = maxx - minx  # horizontal edge
+        height = maxy - miny  # vertical edge
+
+        # case 1: request tile is smaller than overlap: just get closest tile
+        # case 2: if distance to centroid plus half of the request size (taking diagonal here) still within one tile
+        # -> then we need just one tile
+        # else easy workaround just return all
+        # can be improved by using overlap, as this might in worst case download 4x the data
+        if width < 0.090 and height < 0.090 or np.sqrt(width**2 + height**2) / 2 + min_dist < 1.:
+            to_return = [i for i in items if i['meta']['native-id'].split('_')[5] == min_dist_utm_code]
+        else:
+            to_return = items
+
+        return [to_return, ]
+
     @classmethod
     def download_tiles_to_file(cls, path, items, bands=None, processes=4):
-        granules_links = {g: g.data_links() for g in items}
-        granules_links = cls.filter_highest_version_links(granules_links)
+        if isinstance(items, list):
+            granules_links = {g: g.data_links() for g in items}
+        else:
+            granules_links = items
 
+        # print('filterung for product iteration')
+        # print('before', len(granules_links))
+        # granules_links = cls.filter_version_links(granules_links)
+        # print('after', len(granules_links))
         if bands:
             bands = [b + '.tif' for b in bands]
             for key in granules_links.keys():
@@ -113,7 +165,19 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
 
         for i, paths in items.items():
             meta_from_item = {}
-            fileID = i['meta']['native-id']
+            file_id = i['meta']['native-id']
+            file_id_split = file_id.split('_')
+            meta_from_item["sensor"] = file_id_split[0][:3]
+            meta_from_item["product_version"] = file_id_split[0][3:]
+            meta_from_item["level_type"] = file_id_split[1]
+            meta_from_item["geophysical_parameter"] = file_id_split[2]
+            meta_from_item["orbit_number"] = file_id_split[3]
+            meta_from_item["scene_id"] = file_id_split[4]
+            meta_from_item["s2:mgrs_tile"] = file_id_split[5]
+            meta_from_item["toa_str"] = file_id_split[6]
+            meta_from_item["build_id"] = file_id_split[7]
+            meta_from_item["product_iteration_nr"] = file_id_split[8]
+
             meta_from_item['provider-id'] = i['meta']['provider-id']
             meta_from_item['startTime'] = i['umm']['TemporalExtent']['RangeDateTime']['BeginningDateTime']
             meta_from_item['BeginOrbitNumber'] = i['umm']['OrbitCalculatedSpatialDomains'][0]['BeginOrbitNumber']
@@ -187,7 +251,7 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
             meta_from_item['url'] = None
 
             item = pystac.Item(
-                id=fileID,
+                id=file_id,
                 geometry=bbox_to_geom(bbox),
                 bbox=bbox,
                 collection=collection,
@@ -232,7 +296,7 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     def snap_bbox_to_grid(self, bbox, grid_size=70):
         inherent_bbox = self.get_bbox()
         inherent_x, inherent_y = arange_bounds(inherent_bbox.bounds, grid_size)
-        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, 40, -40)
+        created_box = create_utm_grid_bbox(bbox.bounds, grid_size, min(inherent_x) % 70, -min(inherent_y) % 70)
         created_x, created_y = arange_bounds(created_box.bounds, grid_size)
 
         print(created_x[:5], inherent_x[:2], inherent_x[-2:])
@@ -259,9 +323,9 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
         return self.get_bbox()
 
     def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
-        raise NotImplementedError('Ecostress L2T.002 LSTE has observed shifts in x, therefore custom cubing to remedy!')
-        if 'height' in bands or 'view_zenith' in bands:
-            logging.info('the current method does load static assets for each time step, for long time series consider not using height or view_zenith bands!')
+        # raise NotImplementedError('Ecostress L2T.002 LSTE has observed shifts in x, therefore custom cubing to remedy!')
+        if 'he_idht' in bands or 'view_zenith' in bands:
+            logging.info('the current method does load static assets for each time step, for long time series consider not using he_idht or view_zenith bands!')
         if len(items) > 100:
             logging.warning('large amount of assets, consider loading split in smaller time steps!')
 
@@ -505,7 +569,7 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
         return_items = []
         for i, paths in items.items():
             meta_from_item = {a: i.properties[a] for a in attrs_from_results}
-            fileID = i.properties['fileID']
+            file_id = i.properties['file_id']
 
             assets = [{
                 "name": filename.split('/')[-1].replace('.tif', '').split('v1.0_')[1],
@@ -586,7 +650,7 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
 
             # item
             item = pystac.Item(
-                id=fileID,
+                id=file_id,
                 geometry=bbox_to_geom(bbox),
                 bbox=bbox,
                 collection=collection,
