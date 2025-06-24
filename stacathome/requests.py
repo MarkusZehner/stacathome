@@ -1,14 +1,11 @@
-import os
-import logging
-from pathlib import Path
 from datetime import datetime
 from typing import Iterable
 
-from stacathome.registry import PROCESSOR_REGISTRY, get_supported_bands, get_processor
 from stacathome.generic_utils import most_common
+from stacathome.registry import get_processor, get_supported_bands, PROCESSOR_REGISTRY
 
 
-class STACRequest():
+class STACRequest:
     def __init__(
         self,
         collection: str,
@@ -28,26 +25,35 @@ class STACRequest():
 
         for var in variables:
             if var not in available_vars:
-                raise ValueError(f'Variable {var} is not included in collection {collection}. Available: {available_vars}')
+                raise ValueError(
+                    f'Variable {var} is not included in collection {collection}. Available: {available_vars}'
+                )
 
         self.collection = collection
         self.location = location
         self.start_time = start_time
         self.end_time = end_time
         self.variables = set(variables)
-        self.processor_factory = get_processor(self.collection)        
-
+        self.processor_factory = get_processor(self.collection)
 
     def request_items(self, **kwargs):
-        items = self.processor_factory.request_items(self.collection, [self.start_time, self.end_time], self.location, **kwargs)
+        items = self.processor_factory.request_items(
+            self.collection, [self.start_time, self.end_time], self.location, **kwargs
+        )
         return items
 
     def filter_items(self, items):
         if items and self.processor_factory.gridded:
             if self.processor_factory.overlap:
-                items = self.processor_factory(items[0]).collect_covering_tiles_and_coverage(self.location, items=items)[0]
+                items = self.processor_factory(items[0]).collect_covering_tiles_and_coverage(
+                    self.location, items=items
+                )[0]
             else:
-                items = [item for item in items if self.processor_factory(item).does_cover_data(self.location, input_crs=4326)]
+                items = [
+                    item
+                    for item in items
+                    if self.processor_factory(item).does_cover_data(self.location, input_crs=4326)
+                ]
         return items
 
     def create_stac_items(self, path):
@@ -57,7 +63,7 @@ class STACRequest():
         if not items:
             raise ValueError('Need at least one item')
         return get_processor(items[0]).get_geobox(self.location)
-        
+
     def get_data(self, chunks: dict = None, name_ident=None):
         # load data: load data to file, and to cube
         # depending on the processors setting:
@@ -73,7 +79,7 @@ class STACRequest():
 
         # TODO !!!
         if self.processor_factory.cubing in ['preferred']:
-            items = self.create_stac_items(paths=None) 
+            items = self.create_stac_items(paths=None)
 
         if not items:
             return cubes  # TODO: decide how to deal with this edgecase
@@ -89,15 +95,15 @@ class STACRequest():
                 geobox,
                 chunks=chunks,
             )
-    
+
         return cubes
 
     def load_cubes_basic(
-            self,
-            items: dict,
-            geobox: dict,
-            split_by: int = None,
-            chunks: dict = None,
+        self,
+        items: dict,
+        geobox: dict,
+        split_by: int = None,
+        chunks: dict = None,
     ):
         return_cubes = {}
 

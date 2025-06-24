@@ -1,21 +1,20 @@
 import math
-import numpy as np
-from functools import partial
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 import os
-from urllib.request import urlretrieve
-
 import re
 import zipfile
 from collections import Counter
-import zarr
-import planetary_computer as pc
-from pyproj import Proj, Transformer
-from shapely import box, unary_union, transform, Point, buffer
-from pystac import Item
-
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from functools import partial
+from pathlib import Path
+from urllib.request import urlretrieve
+
+import numpy as np
+import planetary_computer as pc
+import zarr
+from pyproj import Proj, Transformer
+from pystac import Item
+from shapely import box, buffer, Point, transform, unary_union
 
 
 def smallest_modulo_deviation(r, m):
@@ -69,7 +68,7 @@ def arange_bounds(bounds, step):
 
     Returns:
     -------
-    (list, list): 
+    (list, list):
         Two arrays representing the x and y coordinates
     """
     return np.arange(bounds[0], bounds[2], step), np.arange(bounds[1], bounds[3], step)
@@ -149,7 +148,7 @@ def compute_scale_and_offset(da, n=16):
 
     # stretch/compress data to the available packed range
     # -2 to reserve the upper bit for nan only, otherwise maxval == nan
-    scale_factor = (vmax - vmin) / (2 ** n - 2)
+    scale_factor = (vmax - vmin) / (2**n - 2)
 
     # # translate the range to be symmetric about zero
     # add_offset = (vmin + 2 ** (n - 1) * scale_factor) + mean_shift
@@ -317,7 +316,7 @@ def metric_buffer(shape, distance: int, return_box=False, crs=4326):
     If `return_box` is False, it returns the buffered shape itself.
     Parameters:
     ----------
-    shape (any) shapely geometry : 
+    shape (any) shapely geometry :
         The shape to buffer.
     distance : int
         The distance in meters to buffer the shape.

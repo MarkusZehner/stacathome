@@ -1,10 +1,12 @@
-from pathlib import Path
 import os
-import shutil
-from concurrent.futures import ThreadPoolExecutor
-import sys
 import pickle
+import shutil
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import geopandas as gpd
+
 notebook_dir = "/Net/Groups/BGI/scratch/mzehner/code/stacathome/"
 sys.path.append(notebook_dir)
 
@@ -63,14 +65,16 @@ if __name__ == "__main__":
     ]
     subset_bands = {
         # 'sentinel-2-l2a': [],
-        'sentinel-1-rtc' : [],
+        'sentinel-1-rtc': [],
     }
     time_ranges = {
         # 'sentinel-2-l2a': '',
         'sentinel-1-rtc': '',
     }
 
-    tiles_and_times = pickle.load(open('/Net/Groups/BGI/work_5/scratch/mzehner/s2_cubes_to_request_thuringia_2.pkl', 'rb'))
+    tiles_and_times = pickle.load(
+        open('/Net/Groups/BGI/work_5/scratch/mzehner/s2_cubes_to_request_thuringia_2.pkl', 'rb')
+    )
     final_path_out = Path('/Net/Groups/BGI/work_5/scratch/mzehner/S1thuringia')
     tmp_path_out = Path('/Net/Groups/BGI/work_5/scratch/mzehner/S1thuringia/tmp')
 
@@ -78,14 +82,18 @@ if __name__ == "__main__":
 
     buckets_th = gpd.read_parquet('/Net/Groups/BGI/work_5/scratch/mzehner/buckets_with_forest_g_35p_time.parquet')
 
-    args_list = [{
-        'i' : i[0],
-        'area' : buckets_th.where(buckets_th['tile'] == i[0]).dropna().geometry.iloc[0],
-        'time_range' : str(i[1]),
-        'tmp_path_out': tmp_path_out,
-        'final_path_out': final_path_out,
-        'collections': collections,
-        'subset_bands': subset_bands} for i in tiles_and_times]
+    args_list = [
+        {
+            'i': i[0],
+            'area': buckets_th.where(buckets_th['tile'] == i[0]).dropna().geometry.iloc[0],
+            'time_range': str(i[1]),
+            'tmp_path_out': tmp_path_out,
+            'final_path_out': final_path_out,
+            'collections': collections,
+            'subset_bands': subset_bands,
+        }
+        for i in tiles_and_times
+    ]
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         executor.map(process_tile, args_list)

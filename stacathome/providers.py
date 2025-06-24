@@ -1,31 +1,26 @@
-import time
 import logging
+import time
 
+import asf_search
+import earthaccess
 import planetary_computer as pc
+from asf_search.download import download_urls
 from odc.stac import load
 from pystac_client import Client
 from pystac_client.exceptions import APIError
 from rasterio.errors import RasterioIOError, WarpOperationError
 
-import asf_search
-from asf_search.download import download_urls
-
-import earthaccess
-
-
 from stacathome.generic_utils import download_assets_parallel
 
 
-class BaseProvider():
+class BaseProvider:
     pass
 
 
-class EarthAccessProvider():
-    def __init__(
-            self
-    ):
+class EarthAccessProvider:
+    def __init__(self):
         pass
-        #earthaccess.login(persist=True)
+        # earthaccess.login(persist=True)
 
     def request_items(self, request_time: str, request_place, **kwargs):
         bounds = request_place.bounds
@@ -36,20 +31,12 @@ class EarthAccessProvider():
             start_time = request_time
             end_time = None
 
-        granules = earthaccess.search_data(
-            temporal=(start_time, end_time),
-            bounding_box=bounds,
-            **kwargs
-        )
+        granules = earthaccess.search_data(temporal=(start_time, end_time), bounding_box=bounds, **kwargs)
         return granules
 
     @classmethod
     def download_from_earthaccess(cls, granules, local_path, threads, **kwargs):
-        earthaccess.download(
-            granules,
-            local_path=local_path,
-            threads=threads,
-            **kwargs)
+        earthaccess.download(granules, local_path=local_path, threads=threads, **kwargs)
 
     def create_cube(self, parameters):
         data = load(**parameters)
@@ -58,7 +45,7 @@ class EarthAccessProvider():
         return data
 
 
-class ASFProvider():
+class ASFProvider:
 
     @staticmethod
     def request_items(request_time, request_place, **kwargs):
@@ -87,12 +74,9 @@ class ASFProvider():
         return data
 
 
-class STACProvider():
+class STACProvider:
     def __init__(
-        self,
-        url: str = "https://planetarycomputer.microsoft.com/api/stac/v1",
-        sign: callable = pc.sign,
-        **kwargs
+        self, url: str = "https://planetarycomputer.microsoft.com/api/stac/v1", sign: callable = pc.sign, **kwargs
     ):
         self.url = url
         self.sign = sign
@@ -107,22 +91,16 @@ class STACProvider():
         return cls(**config)
 
     def request_items(
-        self,
-        collection: list[str],
-        request_time: str,
-        request_place: any = None,
-        max_retry: int = 5,
-        **kwargs
+        self, collection: list[str], request_time: str, request_place: any = None, max_retry: int = 5, **kwargs
     ):
         if isinstance(collection, str):
             collection = [collection]
         items = None
         for _ in range(max_retry):
             try:
-                items = self.client.search(collections=collection,
-                                           datetime=request_time,
-                                           intersects=request_place,
-                                           ** kwargs).item_collection()
+                items = self.client.search(
+                    collections=collection, datetime=request_time, intersects=request_place, **kwargs
+                ).item_collection()
                 break
             except APIError as e:
                 logging.warning(f"APIError: Retrying because of {e}")

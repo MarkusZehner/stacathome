@@ -1,27 +1,22 @@
-import os
 import logging
+import os
 from urllib import parse
 
-import numpy as np
-import xarray as xr
-from shapely import transform, Polygon, box
 import asf_search
+import numpy as np
+import pystac
+import rasterio
+import xarray as xr
 from asf_search import Products
 from asf_search.download.file_download_type import FileDownloadType
-import pystac
 from pystac import Item
 from pystac.utils import str_to_datetime
-import rasterio
 from rasterio.env import Env
-from rio_stac.stac import (
-    get_dataset_geom,
-    get_projection_info,
-    get_raster_info,
-    bbox_to_geom,
-)
+from rio_stac.stac import bbox_to_geom, get_dataset_geom, get_projection_info, get_raster_info
+from shapely import box, Polygon, transform
 
-from .common import STACItemProcessor, ASFResultProcessor, Band
-from stacathome.generic_utils import get_transform, create_utm_grid_bbox, arange_bounds
+from stacathome.generic_utils import arange_bounds, create_utm_grid_bbox, get_transform
+from .common import ASFResultProcessor, Band, STACItemProcessor
 
 
 class OPERASentinel1RTCProcessor(ASFResultProcessor):
@@ -32,80 +27,72 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
     datetime_id = 'startTime'
 
     special_bands = {
-        "mask" :
-            Band(
-                name="mask",
-                data_type="uint8",
-                nodata_value=255,
-                spatial_resolution=30,
-                continuous_measurement=False,
-                flag_meanings=[
-                    "Valid sample not affected by layover or shadow",
-                    "Valid sample affected by shadow",
-                    "Valid sample affected by layover",
-                    "Valid sample affected by layover and shadow",
-                    "Invalid sample (fill value)",
-                ],
-                flag_values=[0, 1, 2, 3, 255],
-            ),
+        "mask": Band(
+            name="mask",
+            data_type="uint8",
+            nodata_value=255,
+            spatial_resolution=30,
+            continuous_measurement=False,
+            flag_meanings=[
+                "Valid sample not affected by layover or shadow",
+                "Valid sample affected by shadow",
+                "Valid sample affected by layover",
+                "Valid sample affected by layover and shadow",
+                "Invalid sample (fill value)",
+            ],
+            flag_values=[0, 1, 2, 3, 255],
+        ),
     }
     bands = {
-        "VV" :
-            Band(
-                name="VV",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "VH" :
-            Band(
-                name="VH",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "incidence_angle" :
-            Band(
-                name="incidence_angle",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "local_incidence_angle" :
-            Band(
-                name="local_incidence_angle",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "number_of_looks":
-            Band(
-                name="number_of_looks",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "rtc_anf_gamma0_to_beta0":
-            Band(
-                name="rtc_anf_gamma0_to_beta0",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
-        "rtc_anf_gamma0_to_sigma0":
-            Band(
-                name="rtc_anf_gamma0_to_sigma0",
-                data_type="float32",
-                nodata_value=np.nan,
-                spatial_resolution=30,
-                continuous_measurement=True,
-            ),
+        "VV": Band(
+            name="VV",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "VH": Band(
+            name="VH",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "incidence_angle": Band(
+            name="incidence_angle",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "local_incidence_angle": Band(
+            name="local_incidence_angle",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "number_of_looks": Band(
+            name="number_of_looks",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "rtc_anf_gamma0_to_beta0": Band(
+            name="rtc_anf_gamma0_to_beta0",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
+        "rtc_anf_gamma0_to_sigma0": Band(
+            name="rtc_anf_gamma0_to_sigma0",
+            data_type="float32",
+            nodata_value=np.nan,
+            spatial_resolution=30,
+            continuous_measurement=True,
+        ),
     }
 
     all_bands = bands | special_bands
@@ -133,10 +120,13 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
                     file_type = '.tif'  # '.xml' if b == 'static-iso' else '.tif'
                     filler = '_'  # '.' if b == 'static-iso' else '_'
                     inc_url = (
-                        static_pre +
-                        i.properties['operaBurstID'].replace('_', '-') +
-                        static_post + filler + b  # .split('-')[1]
-                        + file_type)
+                        static_pre
+                        + i.properties['operaBurstID'].replace('_', '-')
+                        + static_post
+                        + filler
+                        + b
+                        + file_type
+                    )
                     urls.append(inc_url)
 
             dl_items[i] = urls
@@ -151,10 +141,19 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
 
     @classmethod
     def generate_stac_items(cls, items):
-        attrs_from_results = ['flightDirection', 'pathNumber',
-                              'processingLevel', 'url', 'startTime',
-                              'platform', 'orbit', 'sensor',
-                              'subswath', 'beamModeType', 'operaBurstID']
+        attrs_from_results = [
+            'flightDirection',
+            'pathNumber',
+            'processingLevel',
+            'url',
+            'startTime',
+            'platform',
+            'orbit',
+            'sensor',
+            'subswath',
+            'beamModeType',
+            'operaBurstID',
+        ]
 
         media_type = 'image/tiff'  # we could also use rio_stac.stac.get_media_type
 
@@ -165,12 +164,16 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
             meta_from_item = {a: i.properties[a] for a in attrs_from_results}
             file_id = i.properties['file_id']
 
-            assets = [{
-                "name": filename.split('/')[-1].replace('.tif', '').split('v1.0_')[1],
-                "path": filename,
-                "href": None,
-                "role": "data",
-            } for filename in paths if filename.endswith('.tif')]
+            assets = [
+                {
+                    "name": filename.split('/')[-1].replace('.tif', '').split('v1.0_')[1],
+                    "path": filename,
+                    "href": None,
+                    "role": "data",
+                }
+                for filename in paths
+                if filename.endswith('.tif')
+            ]
 
             bboxes = []
             proj_bboxes = []
@@ -193,17 +196,18 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
                         proj_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1, geographic_crs=crs_proj)
                         proj_bboxes.append(proj_geom["bbox"])
                         # stac items geometry and bbox need to be in lat lon
-                        dataset_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1)  # , geographic_crs=crs_proj)
+                        dataset_geom = get_dataset_geom(
+                            src_dst, densify_pts=0, precision=-1
+                        )  # , geographic_crs=crs_proj)
                         bboxes.append(dataset_geom["bbox"])
 
                         proj_info = {
                             f"proj:{name}": value
-                            for name, value in get_projection_info(src_dst).items() if name in ['bbox', 'shape', 'transform']
+                            for name, value in get_projection_info(src_dst).items()
+                            if name in ['bbox', 'shape', 'transform']
                         }
 
-                        raster_info = {
-                            "raster:bands": get_raster_info(src_dst, max_size=1024)
-                        }
+                        raster_info = {"raster:bands": get_raster_info(src_dst, max_size=1024)}
 
                         pystac_assets.append(
                             (
@@ -306,7 +310,9 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
 
     def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
         if {'VV', 'VH', 'mask'} < set(bands):
-            logging.info('the current method does load static assets for each time step, for long time series just use VV, VH and mask bands!')
+            logging.info(
+                'the current method does load static assets for each time step, for long time series just use VV, VH and mask bands!'
+            )
         if len(items) > 100:
             logging.warning('large amount of assets, consider loading split in smaller time steps!')
 
@@ -316,7 +322,11 @@ class OPERASentinel1RTCProcessor(ASFResultProcessor):
         }
 
         if chunks:
-            assert set(chunks.keys()) == {"time", self.x, self.y}, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
+            assert set(chunks.keys()) == {
+                "time",
+                self.x,
+                self.y,
+            }, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
             parameters['chunks'] = chunks
 
         multires_cube = {}
@@ -379,22 +389,20 @@ class Sentinel1RTCProcessor(STACItemProcessor):
 
     special_bands = {}
     bands = {
-        "vv" :
-            Band(
-                name="vv",
-                data_type="float32",
-                nodata_value=-32768,
-                spatial_resolution=10,
-                continuous_measurement=True,
-            ),
-        "vh" :
-            Band(
-                name="vh",
-                data_type="float32",
-                nodata_value=-32768,
-                spatial_resolution=10,
-                continuous_measurement=True,
-            ),
+        "vv": Band(
+            name="vv",
+            data_type="float32",
+            nodata_value=-32768,
+            spatial_resolution=10,
+            continuous_measurement=True,
+        ),
+        "vh": Band(
+            name="vh",
+            data_type="float32",
+            nodata_value=-32768,
+            spatial_resolution=10,
+            continuous_measurement=True,
+        ),
     }
 
     all_bands = bands | special_bands

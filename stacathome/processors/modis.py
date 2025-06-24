@@ -1,9 +1,9 @@
 import math
 
-from shapely import Polygon, box
 from pyproj import CRS
+from shapely import box, Polygon
 
-from .common import STACItemProcessor, Band
+from .common import Band, STACItemProcessor
 
 
 class Modis13Q1Processor(STACItemProcessor):
@@ -11,13 +11,14 @@ class Modis13Q1Processor(STACItemProcessor):
     datetime_id = "start_datetime"
     gridded = True
 
-    indices = ["250m_16_days_NDVI",
-               "250m_16_days_EVI"]
+    indices = ["250m_16_days_NDVI", "250m_16_days_EVI"]
 
-    reflectances = ["250m_16_days_MIR_reflectance",
-                    "250m_16_days_NIR_reflectance",
-                    "250m_16_days_red_reflectance",
-                    "250m_16_days_blue_reflectance"]
+    reflectances = [
+        "250m_16_days_MIR_reflectance",
+        "250m_16_days_NIR_reflectance",
+        "250m_16_days_red_reflectance",
+        "250m_16_days_blue_reflectance",
+    ]
 
     sinusoidal_pixel_spacing = 231.65635826
 
@@ -48,37 +49,34 @@ class Modis13Q1Processor(STACItemProcessor):
         )
 
     other_bands = {
-        "250m_16_days_VI_Quality" :
-            Band(
-                name="250m_16_days_VI_Quality",
-                data_type='uint16',
-                nodata_value=65535,
-                spatial_resolution=sinusoidal_pixel_spacing,
-                continuous_measurement=True,
-                # kwargs
-                valid_range=(0, 65534)
-            ),
-        "250m_16_days_pixel_reliability" :
-            Band(
-                name="250m_16_days_pixel_reliability",
-                data_type='int16',
-                nodata_value=-1,
-                spatial_resolution=sinusoidal_pixel_spacing,
-                continuous_measurement=False,
-                # kwargs
-                valid_range=(0, 3)
-            ),
-        "250m_16_days_relative_azimuth_angle" :
-            Band(
-                name="250m_16_days_relative_azimuth_angle",
-                data_type='int16',
-                nodata_value=-4000,
-                spatial_resolution=sinusoidal_pixel_spacing,
-                continuous_measurement=True,
-                # kwargs
-                scale_factor=0.01,
-                valid_range=(-18000, 18000)
-            ),
+        "250m_16_days_VI_Quality": Band(
+            name="250m_16_days_VI_Quality",
+            data_type='uint16',
+            nodata_value=65535,
+            spatial_resolution=sinusoidal_pixel_spacing,
+            continuous_measurement=True,
+            # kwargs
+            valid_range=(0, 65534),
+        ),
+        "250m_16_days_pixel_reliability": Band(
+            name="250m_16_days_pixel_reliability",
+            data_type='int16',
+            nodata_value=-1,
+            spatial_resolution=sinusoidal_pixel_spacing,
+            continuous_measurement=False,
+            # kwargs
+            valid_range=(0, 3),
+        ),
+        "250m_16_days_relative_azimuth_angle": Band(
+            name="250m_16_days_relative_azimuth_angle",
+            data_type='int16',
+            nodata_value=-4000,
+            spatial_resolution=sinusoidal_pixel_spacing,
+            continuous_measurement=True,
+            # kwargs
+            scale_factor=0.01,
+            valid_range=(-18000, 18000),
+        ),
     }
 
     special_bands = {}
@@ -110,9 +108,9 @@ class Modis13Q1Processor(STACItemProcessor):
         ymax = min(ymax, y_min_global + tile_size_m * n_tiles_v)
 
         # Compute tile indices
-        x_min_pix = (int(math.floor((xmin - x_min_global) / pixel_size) - n_tiles_h / 2 * 4800) * pixel_size)
-        x_max_pix = (int(math.ceil((xmax - x_min_global) / pixel_size) - n_tiles_h / 2 * 4800) * pixel_size)
-        y_min_pix = (int(math.floor((ymin - y_min_global) / pixel_size) - n_tiles_v / 2 * 4800) * pixel_size)
-        y_max_pix = (int(math.ceil((ymax - y_min_global) / pixel_size) - n_tiles_v / 2 * 4800) * pixel_size)
+        x_min_pix = int(math.floor((xmin - x_min_global) / pixel_size) - n_tiles_h / 2 * 4800) * pixel_size
+        x_max_pix = int(math.ceil((xmax - x_min_global) / pixel_size) - n_tiles_h / 2 * 4800) * pixel_size
+        y_min_pix = int(math.floor((ymin - y_min_global) / pixel_size) - n_tiles_v / 2 * 4800) * pixel_size
+        y_max_pix = int(math.ceil((ymax - y_min_global) / pixel_size) - n_tiles_v / 2 * 4800) * pixel_size
 
         return box(x_min_pix, y_min_pix, x_max_pix, y_max_pix)

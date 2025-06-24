@@ -1,15 +1,15 @@
-import sys
-import os
 import json
+import os
+import sys
 
 notebook_dir = "/Net/Groups/BGI/scratch/mzehner/code/stacathome/"
 sys.path.append(notebook_dir)
 
-from stacathome.sentinel_3_utils import load_s3_cube, cut_s3_cubes
-from stacathome.request import probe_request
-from stacathome.utils import parse_dec_to_lon_lat_point, parse_dms_to_lon_lat_point
 from pystac import Item
 from shapely.geometry import Point
+from stacathome.request import probe_request
+from stacathome.sentinel_3_utils import cut_s3_cubes, load_s3_cube
+from stacathome.utils import parse_dec_to_lon_lat_point, parse_dms_to_lon_lat_point
 
 if __name__ == '__main__':
     collection = "sentinel-3-synergy-syn-l2-netcdf"
@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
         json_file = os.path.join(workdir, fname, f"{fname}_S3_query.json")
         if os.path.exists(json_file):
-            with open(json_file, "r") as f:
+            with open(json_file) as f:
                 query_dict = json.load(f)
 
             query_dict = [Item.from_dict(feature) for feature in query_dict["features"]]

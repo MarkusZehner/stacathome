@@ -3,10 +3,10 @@ from collections import defaultdict
 
 import numpy as np
 import xarray as xr
-from shapely import transform, Polygon, box
+from shapely import box, Polygon, transform
 
-from .common import STACItemProcessor, Band
-from stacathome.generic_utils import get_transform, create_utm_grid_bbox, arange_bounds
+from stacathome.generic_utils import arange_bounds, create_utm_grid_bbox, get_transform
+from .common import Band, STACItemProcessor
 
 
 class LandsatC2L2Processor(STACItemProcessor):
@@ -35,70 +35,82 @@ class LandsatC2L2Processor(STACItemProcessor):
         "qa_pixel",
         "qa_radsat",
         "qa_aerosol",
-        "atmos_opacity"
+        "atmos_opacity",
     ]
 
     special_bands = {
-        'qa' :
-            Band(
-                'qa',
-                'int16',
-                -9999,
-                30,
-                False,
-                long_name="Surface Temperature Quality Assessment Band",
-            ),
-        'qa_pixel' :
-            Band(
-                'qa_pixel',
-                'uint16',
+        'qa': Band(
+            'qa',
+            'int16',
+            -9999,
+            30,
+            False,
+            long_name="Surface Temperature Quality Assessment Band",
+        ),
+        'qa_pixel': Band(
+            'qa_pixel',
+            'uint16',
+            1,
+            30,
+            False,
+            long_name="Pixel Quality Assessment Band",
+            flag_meanings=[
+                "Fill",
+                "Clear with lows set",
+                "Dilated cloud over land",
+                "Water with lows set",
+                "Dilated cloud over water",
+                "Mid conf cloud",
+                "Mid conf cloud over water",
+                "High conf cloud",
+                "High conf cloud shadow",
+                "Water with cloud shadow",
+                "Mid conf cloud with shadow",
+                "Mid conf cloud with shadow over water",
+                "High conf cloud with shadow",
+                "High conf cloud with shadow over water",
+                "High conf snow/ice",
+                "High conf cirrus",
+                "Cirrus, mid cloud",
+                "Cirrus, high cloud",
+            ],
+            flag_values=[
                 1,
-                30,
-                False,
-                long_name="Pixel Quality Assessment Band",
-                flag_meanings=[
-                    "Fill",
-                    "Clear with lows set",
-                    "Dilated cloud over land",
-                    "Water with lows set",
-                    "Dilated cloud over water",
-                    "Mid conf cloud",
-                    "Mid conf cloud over water",
-                    "High conf cloud",
-                    "High conf cloud shadow",
-                    "Water with cloud shadow",
-                    "Mid conf cloud with shadow",
-                    "Mid conf cloud with shadow over water",
-                    "High conf cloud with shadow",
-                    "High conf cloud with shadow over water",
-                    "High conf snow/ice",
-                    "High conf cirrus",
-                    "Cirrus, mid cloud",
-                    "Cirrus, high cloud"
-                ],
-                flag_values=[1, 21824, 21826, 21888, 21890, 22080,
-                             22144, 22280, 23888, 23952, 24088,
-                             24216, 24344, 24472, 30048, 54596,
-                             54852, 55052],
-            ),
-        'qa_aerosol' :
-            Band(
-                'qa_aerosol',
-                'uint8',
-                1,
-                30,
-                False,
-                long_name="",
-            ),
-        'qa_radsat' :
-            Band(
-                'qa_radsat',
-                'uint16',
-                1,
-                30,
-                False,
-                long_name="",
-            ),
+                21824,
+                21826,
+                21888,
+                21890,
+                22080,
+                22144,
+                22280,
+                23888,
+                23952,
+                24088,
+                24216,
+                24344,
+                24472,
+                30048,
+                54596,
+                54852,
+                55052,
+            ],
+        ),
+        'qa_aerosol': Band(
+            'qa_aerosol',
+            'uint8',
+            1,
+            30,
+            False,
+            long_name="",
+        ),
+        'qa_radsat': Band(
+            'qa_radsat',
+            'uint16',
+            1,
+            30,
+            False,
+            long_name="",
+        ),
     }
 
     def get_data_asset_keys(self, role=['data', 'saturation', 'water-mask']):

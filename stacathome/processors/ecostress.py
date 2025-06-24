@@ -1,26 +1,26 @@
+import logging
 import os
 import re
-import logging
 from urllib import parse
+
 import numpy as np
-import xarray as xr
-from shapely import box
-from earthaccess.results import DataGranule
 import pystac
+import rasterio
+import xarray as xr
+from earthaccess.results import DataGranule
 from pystac import Item
 from pystac.utils import str_to_datetime
-import rasterio
 from rasterio.env import Env
-from rio_stac.stac import (
-    get_dataset_geom,
-    get_projection_info,
-    get_raster_info,
-    bbox_to_geom,
+from rio_stac.stac import bbox_to_geom, get_dataset_geom, get_projection_info, get_raster_info
+from shapely import box
+
+from stacathome.generic_utils import (
+    arange_bounds,
+    create_utm_grid_bbox,
+    merge_item_datetime_by_timedelta,
+    smallest_modulo_deviation,
 )
-
-
 from .common import Band, EarthAccessProcessor
-from stacathome.generic_utils import create_utm_grid_bbox, arange_bounds, merge_item_datetime_by_timedelta, smallest_modulo_deviation
 
 
 class ECOL2TLSTEProcessor(EarthAccessProcessor):
@@ -70,7 +70,7 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     def collect_covering_tiles_and_coverage(self, request_place, items):
         """
         to be called with the data granule
-        use name info in granule to narrow down which data fits the request. 
+        use name info in granule to narrow down which data fits the request.
 
         utm tile is in the name, but extent has to be drawn from the file metadata
 
@@ -104,12 +104,14 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
         # -> then we need just one tile
         # else easy workaround just return all
         # can be improved by using overlap, as this might in worst case download 4x the data
-        if width < 0.090 and height < 0.090 or np.sqrt(width**2 + height**2) / 2 + min_dist < 1.:
+        if width < 0.090 and height < 0.090 or np.sqrt(width**2 + height**2) / 2 + min_dist < 1.0:
             to_return = [i for i in items if i['meta']['native-id'].split('_')[5] == min_dist_utm_code]
         else:
             to_return = items
 
-        return [to_return, ]
+        return [
+            to_return,
+        ]
 
     @classmethod
     def download_tiles_to_file(cls, path, items, bands=None, processes=4):
@@ -128,7 +130,9 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
         cls.provider.download_from_earthaccess(granules_links_flat, path, threads=processes)
 
         for k in granules_links.keys():
-            granules_links[k] = [os.path.join(path, os.path.split(parse.urlparse(paths).path)[1]) for paths in granules_links[k]]
+            granules_links[k] = [
+                os.path.join(path, os.path.split(parse.urlparse(paths).path)[1]) for paths in granules_links[k]
+            ]
 
         return granules_links
 
@@ -159,12 +163,16 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
             meta_from_item['BeginOrbitNumber'] = i['umm']['OrbitCalculatedSpatialDomains'][0]['BeginOrbitNumber']
             meta_from_item['DayNightFlag'] = i['umm']['DataGranule']['DayNightFlag']
 
-            assets = [{
-                "name": re.split(r'_(\d{2})_', filename)[-1].replace('.tif', ''),
-                "path": filename,
-                "href": None,
-                "role": "data",
-            } for filename in paths if filename.endswith('.tif')]
+            assets = [
+                {
+                    "name": re.split(r'_(\d{2})_', filename)[-1].replace('.tif', ''),
+                    "path": filename,
+                    "href": None,
+                    "role": "data",
+                }
+                for filename in paths
+                if filename.endswith('.tif')
+            ]
 
             bboxes = []
             proj_bboxes = []
@@ -186,17 +194,18 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
                         proj_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1, geographic_crs=crs_proj)
                         proj_bboxes.append(proj_geom["bbox"])
                         # stac items geometry and bbox need to be in lat lon
-                        dataset_geom = get_dataset_geom(src_dst, densify_pts=0, precision=-1)  # , geographic_crs=crs_proj)
+                        dataset_geom = get_dataset_geom(
+                            src_dst, densify_pts=0, precision=-1
+                        )  # , geographic_crs=crs_proj)
                         bboxes.append(dataset_geom["bbox"])
 
                         proj_info = {
                             f"proj:{name}": value
-                            for name, value in get_projection_info(src_dst).items() if name in ['bbox', 'shape', 'transform']
+                            for name, value in get_projection_info(src_dst).items()
+                            if name in ['bbox', 'shape', 'transform']
                         }
 
-                        raster_info = {
-                            "raster:bands": get_raster_info(src_dst, max_size=1024)
-                        }
+                        raster_info = {"raster:bands": get_raster_info(src_dst, max_size=1024)}
 
                         pystac_assets.append(
                             (
@@ -300,7 +309,9 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
     def load_cube(self, items, bands, geobox, split_by=100, chunks: dict = None):
         # raise NotImplementedError('Ecostress L2T.002 LSTE has observed shifts in x, therefore custom cubing to remedy!')
         if 'he_idht' in bands or 'view_zenith' in bands:
-            logging.info('the current method does load static assets for each time step, for long time series consider not using he_idht or view_zenith bands!')
+            logging.info(
+                'the current method does load static assets for each time step, for long time series consider not using he_idht or view_zenith bands!'
+            )
         if len(items) > 100:
             logging.warning('large amount of assets, consider loading split in smaller time steps!')
 
@@ -313,7 +324,11 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
         }
 
         if chunks:
-            assert set(chunks.keys()) == {"time", self.x, self.y}, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
+            assert set(chunks.keys()) == {
+                "time",
+                self.x,
+                self.y,
+            }, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
             parameters['chunks'] = chunks
 
         multires_cube = {}

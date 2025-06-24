@@ -1,14 +1,17 @@
-from pystac import Item
 from asf_search import Products
 from earthaccess.results import DataGranule
-from stacathome.processors import (Sentinel2L2AProcessor,
-                                                Modis13Q1Processor,
-                                                ESAWorldCoverProcessor,
-                                                Sentinel1RTCProcessor,
-                                                Sentinel3SynergyProcessor,
-                                                OPERASentinel1RTCProcessor,
-                                                LandsatC2L2Processor,
-                                                ECOL2TLSTEProcessor)
+from pystac import Item
+
+from stacathome.processors import (
+    ECOL2TLSTEProcessor,
+    ESAWorldCoverProcessor,
+    LandsatC2L2Processor,
+    Modis13Q1Processor,
+    OPERASentinel1RTCProcessor,
+    Sentinel1RTCProcessor,
+    Sentinel2L2AProcessor,
+    Sentinel3SynergyProcessor,
+)
 
 PROCESSOR_REGISTRY_STAC = {
     "sentinel-2-l2a": Sentinel2L2AProcessor,
@@ -17,7 +20,6 @@ PROCESSOR_REGISTRY_STAC = {
     "sentinel-1-rtc": Sentinel1RTCProcessor,
     "sentinel-3-synergy-syn-l2-netcdf": Sentinel3SynergyProcessor,
     "landsat-c2-l2": LandsatC2L2Processor,
-
 }
 
 PROCESSOR_REGISTRY_ASF = {
@@ -42,7 +44,7 @@ def get_tilename_key(dataset_key: str):
 
 def get_processor(item):
     """
-    this will return either the class (by string indicating the collection) 
+    this will return either the class (by string indicating the collection)
     or an instantiated object (by item or result of search)
 
     Args:
@@ -79,4 +81,5 @@ def request_items(collection, request_time, request_place, **kwargs):
 
 def request_items_tile(collection, request_time, tile, **kwargs):
     return PROCESSOR_REGISTRY[collection].request_items_tile(
-        collection, request_time, get_tilename_key(collection), tile, **kwargs)
+        collection, request_time, get_tilename_key(collection), tile, **kwargs
+    )

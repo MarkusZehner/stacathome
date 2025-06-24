@@ -1,20 +1,21 @@
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from collections import defaultdict
-from typing import Dict, Any
 import logging
 import math
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from pystac import Item
-from odc.geo.geobox import GeoBox
+from typing import Any, Dict
+
 import numpy as np
 import xarray as xr
-from shapely import transform, box
 from asf_search import Products
 from earthaccess.results import DataGranule
+from odc.geo.geobox import GeoBox
+from pystac import Item
+from shapely import box, transform
 
 from stacathome.generic_utils import get_transform
-from stacathome.providers import STACProvider, ASFProvider, EarthAccessProvider
+from stacathome.providers import ASFProvider, EarthAccessProvider, STACProvider
 
 
 class EarthAccessProcessor(ABC):
@@ -55,8 +56,7 @@ class EarthAccessProcessor(ABC):
         kwarg_dict = {
             'short_name': short_name,
             'version': version,
-            'count' : max_items,
-
+            'count': max_items,
         }
         kwargs = kwargs | kwarg_dict
 
@@ -118,9 +118,9 @@ class EarthAccessProcessor(ABC):
         snapped_bbox = self.snap_bbox_to_grid(transform(bbox, get_transform(4326, self.get_crs())))
         res = defaultdict(list)
         for b in self.get_assets_as_bands():
-            res[GeoBox.from_bbox(snapped_bbox.bounds,
-                                 crs=self.get_crs(),
-                                 resolution=b.spatial_resolution)].append(b.name)
+            res[GeoBox.from_bbox(snapped_bbox.bounds, crs=self.get_crs(), resolution=b.spatial_resolution)].append(
+                b.name
+            )
         return dict(res)
 
     @abstractmethod
@@ -128,18 +128,20 @@ class EarthAccessProcessor(ABC):
         raise NotImplementedError
 
     def get_resampling_per_band(self, target_resolution):
-        return {b.name: ("nearest"
-                         if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
-                         else "bilinear"
-                         if b.continuous_measurement
-                         else "mode") for b in self.get_assets_as_bands()}
+        return {
+            b.name: (
+                "nearest"
+                if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
+                else "bilinear" if b.continuous_measurement else "mode"
+            )
+            for b in self.get_assets_as_bands()
+        }
 
     def get_dtype_per_band(self, target_resolution):
         resampling = self.get_resampling_per_band(target_resolution)
-        return {b.name: (b.data_type
-                         if resampling[b.name] == 'nearest'
-                         else "float32")
-                for b in self.get_assets_as_bands()}
+        return {
+            b.name: (b.data_type if resampling[b.name] == 'nearest' else "float32") for b in self.get_assets_as_bands()
+        }
 
     def get_band_attributes(self, bands: list[str] | set[str]):
         return {b: self.all_bands[b].to_dict() for b in bands if b in self.all_bands}
@@ -305,9 +307,9 @@ class ASFResultProcessor(ABC):
         snapped_bbox = self.snap_bbox_to_grid(transform(bbox, get_transform(4326, self.get_crs())))
         res = defaultdict(list)
         for b in self.get_assets_as_bands():
-            res[GeoBox.from_bbox(snapped_bbox.bounds,
-                                 crs=self.get_crs(),
-                                 resolution=b.spatial_resolution)].append(b.name)
+            res[GeoBox.from_bbox(snapped_bbox.bounds, crs=self.get_crs(), resolution=b.spatial_resolution)].append(
+                b.name
+            )
         return dict(res)
 
     @abstractmethod
@@ -315,18 +317,20 @@ class ASFResultProcessor(ABC):
         raise NotImplementedError
 
     def get_resampling_per_band(self, target_resolution):
-        return {b.name: ("nearest"
-                         if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
-                         else "bilinear"
-                         if b.continuous_measurement
-                         else "mode") for b in self.get_assets_as_bands()}
+        return {
+            b.name: (
+                "nearest"
+                if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
+                else "bilinear" if b.continuous_measurement else "mode"
+            )
+            for b in self.get_assets_as_bands()
+        }
 
     def get_dtype_per_band(self, target_resolution):
         resampling = self.get_resampling_per_band(target_resolution)
-        return {b.name: (b.data_type
-                         if resampling[b.name] == 'nearest'
-                         else "float32")
-                for b in self.get_assets_as_bands()}
+        return {
+            b.name: (b.data_type if resampling[b.name] == 'nearest' else "float32") for b in self.get_assets_as_bands()
+        }
 
     def get_band_attributes(self, bands: list[str] | set[str]):
         return {b: self.all_bands[b].to_dict() for b in bands if b in self.all_bands}
@@ -427,19 +431,20 @@ class STACItemProcessor(ABC):
 
     @classmethod
     def request_items(cls, collection, request_time, request_place, item_limit=None):
-        items = cls.provider.request_items(collection=collection,
-                                           request_time=request_time,
-                                           request_place=request_place,
-                                           max_items=item_limit,
-                                           max_retry=5)
+        items = cls.provider.request_items(
+            collection=collection,
+            request_time=request_time,
+            request_place=request_place,
+            max_items=item_limit,
+            max_retry=5,
+        )
         return items
 
     @classmethod
     def request_items_tile(cls, collection, request_time, tile_key, tile_ids, **kwargs):
-        items = cls.provider.request_items(collection=collection,
-                                           request_time=request_time,
-                                           query={tile_key: {'in': tile_ids}},
-                                           **kwargs)
+        items = cls.provider.request_items(
+            collection=collection, request_time=request_time, query={tile_key: {'in': tile_ids}}, **kwargs
+        )
         return items
 
     def get_band_attributes(self, bands: list[str] | set[str]):
@@ -492,26 +497,28 @@ class STACItemProcessor(ABC):
 
     def get_dtype_per_band(self, target_resolution):
         resampling = self.get_resampling_per_band(target_resolution)
-        return {b.name: (b.data_type
-                         if resampling[b.name] == 'nearest'
-                         else "float32")
-                for b in self.get_assets_as_bands()}
+        return {
+            b.name: (b.data_type if resampling[b.name] == 'nearest' else "float32") for b in self.get_assets_as_bands()
+        }
 
     def get_geobox(self, bbox):
         snapped_bbox = self.snap_bbox_to_grid(transform(bbox, get_transform(4326, self.get_crs())))
         res = defaultdict(list)
         for b in self.get_assets_as_bands():
-            res[GeoBox.from_bbox(snapped_bbox.bounds,
-                                 crs=self.get_crs(),
-                                 resolution=b.spatial_resolution)].append(b.name)
+            res[GeoBox.from_bbox(snapped_bbox.bounds, crs=self.get_crs(), resolution=b.spatial_resolution)].append(
+                b.name
+            )
         return dict(res)
 
     def get_resampling_per_band(self, target_resolution):
-        return {b.name: ("nearest"
-                         if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
-                         else "bilinear"
-                         if b.continuous_measurement
-                         else "mode") for b in self.get_assets_as_bands()}
+        return {
+            b.name: (
+                "nearest"
+                if target_resolution <= b.spatial_resolution or math.isclose(target_resolution, b.spatial_resolution)
+                else "bilinear" if b.continuous_measurement else "mode"
+            )
+            for b in self.get_assets_as_bands()
+        }
 
     def get_tilename_value(self):
         if self.tilename is None:
@@ -588,7 +595,11 @@ class STACItemProcessor(ABC):
         }
 
         if chunks:
-            assert set(chunks.keys()) == {"time", self.x, self.y}, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
+            assert set(chunks.keys()) == {
+                "time",
+                self.x,
+                self.y,
+            }, f"Chunks must contain the dimensions 'time', {self.x}, {self.y}!"
             parameters['chunks'] = chunks
 
         multires_cube = {}
@@ -673,8 +684,15 @@ class Band:
     continuous_measurement: bool
     extra_attributes: Dict[str, Any] = field(default_factory=dict)
 
-    def __init__(self, name: str, data_type: str, nodata_value: int, spatial_resolution: int,
-                 continuous_measurement: bool, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        data_type: str,
+        nodata_value: int,
+        spatial_resolution: int,
+        continuous_measurement: bool,
+        **kwargs,
+    ):
         self.name = name
         self.data_type = data_type
         self.nodata_value = nodata_value

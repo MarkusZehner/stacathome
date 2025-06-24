@@ -1,9 +1,9 @@
 import json
 import os
-import time
-from datetime import datetime
-import warnings
 import sys
+import time
+import warnings
+from datetime import datetime
 
 import numba as nb
 import numpy as np
@@ -63,7 +63,9 @@ def collect_local_items(dev_path, tile, time_range=None, replace_hrefs=True):
     return query
 
 
-def load_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, time_range, spat_res=10, subset=True, return_box=False):
+def load_otf_from_tiffs(
+    dev_path, bands, collection, tile, i_y, i_x, c_size, time_range, spat_res=10, subset=True, return_box=False
+):
 
     collection = 'sentinel-2-l2a' if collection is None else collection
     bands = ['B02', 'B03', 'B04', 'B08', 'SCL'] if bands is None else bands
@@ -76,8 +78,7 @@ def load_otf_from_tiffs(dev_path, bands, collection, tile, i_y, i_x, c_size, tim
     request_geobox = GeoBox.from_bbox(bbox, CRS.from_epsg(crs), resolution=spat_res)
 
     if subset:
-        request_geobox = request_geobox[i_y * c_size : i_y * c_size + c_size,
-                                        i_x * c_size : i_x * c_size + c_size]
+        request_geobox = request_geobox[i_y * c_size : i_y * c_size + c_size, i_x * c_size : i_x * c_size + c_size]
 
     attributes = get_attributes(collection)
     data_atts = attributes.pop("data_attrs")
@@ -157,8 +158,9 @@ def weekly_ndvi(ndvi, Time, t_delta=(7, "D")):
 
     valid_mask = ~np.isnan(ndvi_weekly_values)
     if np.sum(valid_mask) >= ndvi_weekly_values.shape[0] / 10:
-        pchip_interpolator = PchipInterpolator(date_range[valid_mask].astype(float),
-                                               ndvi_weekly_values[valid_mask], extrapolate=False)
+        pchip_interpolator = PchipInterpolator(
+            date_range[valid_mask].astype(float), ndvi_weekly_values[valid_mask], extrapolate=False
+        )
         ndvi_pchip_values = pchip_interpolator(date_range.astype(float))
     else:
         ndvi_pchip_values = np.full_like(ndvi_weekly_values, np.nan)
@@ -175,8 +177,9 @@ def daily_ndvi(ndvi, Time, start_day="2016-01-01"):
 
     valid_mask = ~np.isnan(ndvi_daily_values)
     if np.any(valid_mask):
-        pchip_interpolator = PchipInterpolator(date_range[valid_mask].astype(float),
-                                               ndvi_daily_values[valid_mask], extrapolate=False)
+        pchip_interpolator = PchipInterpolator(
+            date_range[valid_mask].astype(float), ndvi_daily_values[valid_mask], extrapolate=False
+        )
         ndvi_pchip_values = pchip_interpolator(date_range.astype(float))
     else:
         ndvi_pchip_values = np.full_like(ndvi_daily_values, np.nan)
@@ -262,9 +265,7 @@ def compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=12)
     doy_index[doy_index < 7] = 371
 
     # Compute min/max NDVI based on 7-day intervals
-    ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(ndvi_pchip_values,
-                                                       doy_index,
-                                                       window_size=smooth_window_extremes)
+    ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(ndvi_pchip_values, doy_index, window_size=smooth_window_extremes)
 
     # Apply VCI calculation
     temp_ndvi_min = ndvi_min[(doy_index.astype(int) - 1) // 7]
@@ -273,16 +274,18 @@ def compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=12)
     return (ndvi_pchip_values - temp_ndvi_min) / (temp_ndvi_max - temp_ndvi_min).clip(0.01, None)
 
 
-def compute_vci_weekly_from_weekly_ndvi(ndvi_weekly, date_range,
-                                        ndvi_min=None, ndvi_max=None,
-                                        return_extrema=False,
-                                        smooth_window_extremes=12):
+def compute_vci_weekly_from_weekly_ndvi(
+    ndvi_weekly, date_range, ndvi_min=None, ndvi_max=None, return_extrema=False, smooth_window_extremes=12
+):
     doy_index = date_range.astype('datetime64[D]') - date_range.astype('datetime64[Y]') + 6
     week_of_year = doy_index // 7
     if ndvi_min is None and ndvi_max is None:
         ndvi_min, ndvi_max = compute_ndvi_min_max_smoothed(
             # ndvi_weekly[:52 * 4], week_of_year, smooth_window_extremes)  # cut ndvi here (only right side) to generate min/max fromup to certain range
-            ndvi_weekly, week_of_year, smooth_window_extremes)
+            ndvi_weekly,
+            week_of_year,
+            smooth_window_extremes,
+        )
 
         temp_ndvi_min = ndvi_min[week_of_year.astype(int)]
         temp_ndvi_max = ndvi_max[week_of_year.astype(int)]
@@ -354,8 +357,7 @@ def vci_3m(B02, B03, B04, B08, SCL, Time, smooth_window_extremes=12):
     # B04, B08, Time = harmonize_bands(B02, B03, B04, B08, SCL, Time)
     # ndvi = compute_ndvi(B04, B08)
     # date_range, ndvi_pchip_values = weekly_ndvi(ndvi, Time)
-    date_range, ndvi_pchip_values = process_ndvi_weekly(
-        B02, B03, B04, B08, SCL, Time, return_date_range=False)
+    date_range, ndvi_pchip_values = process_ndvi_weekly(B02, B03, B04, B08, SCL, Time, return_date_range=False)
 
     vci = compute_vci_weekly(ndvi_pchip_values, date_range, smooth_window_extremes=smooth_window_extremes)
     vci3m = rolling_mean(vci, 12)
@@ -365,13 +367,18 @@ def vci_3m(B02, B03, B04, B08, SCL, Time, smooth_window_extremes=12):
     return vci3m
 
 
-def vci_3m_weekly_from_ndvi_weekly(ndvi_weekly, Time, ndvi_min=None, ndvi_max=None,
-                                   return_extrema=False, smooth_window_extremes=12):
+def vci_3m_weekly_from_ndvi_weekly(
+    ndvi_weekly, Time, ndvi_min=None, ndvi_max=None, return_extrema=False, smooth_window_extremes=12
+):
     date_range = define_time_range(Time)
-    vci = compute_vci_weekly_from_weekly_ndvi(ndvi_weekly, date_range,
-                                              ndvi_min=ndvi_min, ndvi_max=ndvi_max,
-                                              return_extrema=return_extrema,
-                                              smooth_window_extremes=smooth_window_extremes)
+    vci = compute_vci_weekly_from_weekly_ndvi(
+        ndvi_weekly,
+        date_range,
+        ndvi_min=ndvi_min,
+        ndvi_max=ndvi_max,
+        return_extrema=return_extrema,
+        smooth_window_extremes=smooth_window_extremes,
+    )
     if return_extrema:
         return np.stack((rolling_mean(vci[0], 12), vci[1], vci[2]), axis=0)
     return rolling_mean(vci, 12)
@@ -379,13 +386,17 @@ def vci_3m_weekly_from_ndvi_weekly(ndvi_weekly, Time, ndvi_min=None, ndvi_max=No
 
 def define_time_range(Time):
     start_years = np.unique(Time.astype('datetime64[Y]'))
-    date_range = np.concatenate([
-        np.arange(year,
-                  # year + np.timedelta64(366 if (year.astype(int) % 4 == 0 and (year.astype(int) % 100 != 0 or year.astype(int) % 400 == 0)) else 365, "D"),
-                  year + np.timedelta64(365 - 7, "D"),
-                  np.timedelta64(7, "D"))
-        for year in start_years
-    ])
+    date_range = np.concatenate(
+        [
+            np.arange(
+                year,
+                # year + np.timedelta64(366 if (year.astype(int) % 4 == 0 and (year.astype(int) % 100 != 0 or year.astype(int) % 400 == 0)) else 365, "D"),
+                year + np.timedelta64(365 - 7, "D"),
+                np.timedelta64(7, "D"),
+            )
+            for year in start_years
+        ]
+    )
     return date_range
 
 
@@ -443,8 +454,7 @@ def get_vci3m_weekly(dataset, smooth_window_extremes=12):
     return result.to_dataset(name='vci3m_weekly')
 
 
-def get_vci3m_weekly_from_ndvi_weekly(dataset,
-                                      return_extrema=False, smooth_window_extremes=12):
+def get_vci3m_weekly_from_ndvi_weekly(dataset, return_extrema=False, smooth_window_extremes=12):
     t_ax = define_time_range(dataset.time.values).astype("datetime64[ns]") + np.timedelta64(6, "D")
     # here is something wrong with the time dim
     if 'ndvi_min' in dataset and 'ndvi_max' in dataset:
@@ -461,8 +471,7 @@ def get_vci3m_weekly_from_ndvi_weekly(dataset,
             },
             input_core_dims=input_core_dims,
             output_core_dims=[['weeks']],
-            dask_gufunc_kwargs={'output_sizes': {
-                'weeks': len(t_ax)}},
+            dask_gufunc_kwargs={'output_sizes': {'weeks': len(t_ax)}},
             dask='parallelized',
             output_dtypes=[np.float32],
             vectorize=True,
@@ -481,9 +490,7 @@ def get_vci3m_weekly_from_ndvi_weekly(dataset,
             },
             input_core_dims=input_core_dims,
             output_core_dims=[['variables', 'weeks']],
-            dask_gufunc_kwargs={'output_sizes': {
-                'variables': 3 if return_extrema else 1,
-                'weeks': len(t_ax)}},
+            dask_gufunc_kwargs={'output_sizes': {'variables': 3 if return_extrema else 1, 'weeks': len(t_ax)}},
             dask='parallelized',
             output_dtypes=[np.float32],
             vectorize=True,
@@ -896,7 +903,9 @@ if __name__ == '__main__':
             print('found multiple closest era5 pixels', flush=True)
             # implement a dictionary wise approach to forward the correct era5 pixel to the correct cube pixel
 
-    vci_3m_path = f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_no_smooth_{i_y}_{i_x}.zarr'
+    vci_3m_path = (
+        f'/Net/Groups/BGI/work_5/scratch/Somalia_VCI_test/37NHE/vci_results/weekly_vci3m_no_smooth_{i_y}_{i_x}.zarr'
+    )
 
     if not os.path.exists(vci_3m_path):
         print('Calculating VCI3M at', time.ctime(), flush=True)
@@ -919,8 +928,7 @@ if __name__ == '__main__':
             era5.sel(time=slice(start_date, end_date))
             # .resample(time="1W", origin='start_day')
             # .mean()
-            .sel(lat=era5_index[0][0], lon=era5_index[0][1], method="nearest")[era5_vars]
-            .drop_vars(["lat", "lon"])
+            .sel(lat=era5_index[0][0], lon=era5_index[0][1], method="nearest")[era5_vars].drop_vars(["lat", "lon"])
         ).load()
 
         weather_np = weekly_era5.to_array(dim='variable').values

@@ -13,8 +13,7 @@ class Sentinel3SynergyProcessor(STACItemProcessor):
     cubing = 'custom'
 
     keys = [
-        'geolocation'
-        'syn-amin',
+        'geolocation' 'syn-amin',
         'syn-flags',
         'syn-ato550',
         'syn-angstrom-exp550',

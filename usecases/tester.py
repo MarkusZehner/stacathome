@@ -1,7 +1,8 @@
 from pathlib import Path
-from stacathome.redo_classes.requests import STACRequest
-from stacathome.redo_classes.generic_utils import parse_dec_to_lon_lat_point, metric_buffer, get_utm_crs_from_lon_lat
+
+from stacathome.redo_classes.generic_utils import get_utm_crs_from_lon_lat, metric_buffer, parse_dec_to_lon_lat_point
 from stacathome.redo_classes.registry import get_processor
+from stacathome.redo_classes.requests import STACRequest
 
 if __name__ == '__main__':
 
@@ -10,20 +11,26 @@ if __name__ == '__main__':
 
     bucket_crs = get_utm_crs_from_lon_lat(point.x, point.y)
 
-    collections = ['sentinel-2-l2a', 'modis-13Q1-061', 'esa-worldcover', 'sentinel-1-rtc', 'sentinel-3-synergy-syn-l2-netcdf']
+    collections = [
+        'sentinel-2-l2a',
+        'modis-13Q1-061',
+        'esa-worldcover',
+        'sentinel-1-rtc',
+        'sentinel-3-synergy-syn-l2-netcdf',
+    ]
     subset_bands = {
         'sentinel-2-l2a': ['B02', 'B03', 'B04', 'B05', 'B06', 'B07'],
         'sentinel-1-rtc': ['vv', 'vh'],
         'modis-13Q1-061': ['250m_16_days_EVI'],
         'esa-worldcover': ['map'],
-        "sentinel-3-synergy-syn-l2-netcdf": ['syn-s3n-reflectance']
+        "sentinel-3-synergy-syn-l2-netcdf": ['syn-s3n-reflectance'],
     }
     time_ranges = {
         'sentinel-2-l2a': '2021-01-01/2021-02-15',
         'sentinel-1-rtc': '2021-01-01/2021-02-15',
         'sentinel-3-synergy-syn-l2-netcdf': '2021-01-01/2021-02-15',
         'modis-13Q1-061': '2016-01-01/2016-12-31',
-        'esa-worldcover': '2021'
+        'esa-worldcover': '2021',
     }
     request = STACRequest(collections, p_boxed, time_ranges)
     items = request.request_items_basic()
@@ -31,8 +38,7 @@ if __name__ == '__main__':
     items['sentinel-2-l2a'] = [i for i in items['sentinel-2-l2a'] if get_processor(i).get_crs() == bucket_crs]
 
     geoboxes = request.create_geoboxes(items)
-    cubes = request.load_cubes_basic(items, geoboxes,
-                                     path=Path('/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_test2'))
+    cubes = request.load_cubes_basic(items, geoboxes, path=Path('/Net/Groups/BGI/work_5/scratch/EU_Minicubes/_test2'))
 
     # # alternative with checking for tile names, does not work with sentinel-3 and -1
     # request = STACRequest(collections, p_boxed, time_ranges)

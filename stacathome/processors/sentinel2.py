@@ -1,15 +1,22 @@
+import datetime
 import logging
 from collections import defaultdict
 
-import datetime
 import numpy as np
 import xarray as xr
-from shapely import transform, Polygon, box
+from shapely import box, Polygon, transform
 
-
-from .common import STACItemProcessor, Band
-from stacathome.generic_utils import (get_transform, compute_scale_and_offset, create_utm_grid_bbox, arange_bounds,
-                                                   most_common, resolve_best_containing, merge_to_cover, smallest_modulo_deviation)
+from stacathome.generic_utils import (
+    arange_bounds,
+    compute_scale_and_offset,
+    create_utm_grid_bbox,
+    get_transform,
+    merge_to_cover,
+    most_common,
+    resolve_best_containing,
+    smallest_modulo_deviation,
+)
+from .common import Band, STACItemProcessor
 
 
 class Sentinel2L2AProcessor(STACItemProcessor):
@@ -18,34 +25,30 @@ class Sentinel2L2AProcessor(STACItemProcessor):
     gridded = True
     overlap = True
 
-    supported_bands = [
-        "B01", "B02", "B03", "B04", "B05", "B06",
-        "B07", "B08", "B8A", "B09", "B11", "B12", "SCL"
-    ]
+    supported_bands = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12", "SCL"]
     special_bands = {
-        'SCL' :
-            Band(
-                'SCL',
-                'uint8',
-                0,
-                20,
-                False,
-                long_name="Scene Classification Layer",
-                flag_meanings=[
-                    "Saturated / Defective",
-                    "Dark Area Pixels",
-                    "Cloud Shadows",
-                    "Vegetation",
-                    "Bare Soils",
-                    "Water",
-                    "Clouds low probability / Unclassified",
-                    "Clouds medium probability",
-                    "Clouds high probability",
-                    "Cirrus",
-                    "Snow / Ice",
-                ],
-                flag_values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-            )
+        'SCL': Band(
+            'SCL',
+            'uint8',
+            0,
+            20,
+            False,
+            long_name="Scene Classification Layer",
+            flag_meanings=[
+                "Saturated / Defective",
+                "Dark Area Pixels",
+                "Cloud Shadows",
+                "Vegetation",
+                "Bare Soils",
+                "Water",
+                "Clouds low probability / Unclassified",
+                "Clouds medium probability",
+                "Clouds high probability",
+                "Cirrus",
+                "Snow / Ice",
+            ],
+            flag_values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        )
     }
 
     def get_assets_as_bands(self):
@@ -104,10 +107,8 @@ class Sentinel2L2AProcessor(STACItemProcessor):
 
         if items is None and all([request_time is not None, request_place is not None]):
             items = self.provider.request_items(
-                self.item.collection_id,
-                request_time=request_time,
-                request_place=request_place,
-                max_items=item_limit)
+                self.item.collection_id, request_time=request_time, request_place=request_place, max_items=item_limit
+            )
 
             if items is None:
                 raise ValueError("No items found for the given request parameters.")
@@ -115,28 +116,29 @@ class Sentinel2L2AProcessor(STACItemProcessor):
             filter = True
 
         if len(items) < item_limit:
-            logging.warning(f"Less than {item_limit} items found for {self.item.collection_id} in {request_place} "
-                            f"and {request_time}")
+            logging.warning(
+                f"Less than {item_limit} items found for {self.item.collection_id} in {request_place} "
+                f"and {request_time}"
+            )
 
-        collect_coverage_from = items[:min(len(items), item_limit)]
+        collect_coverage_from = items[: min(len(items), item_limit)]
 
         by_tile = defaultdict(list)
 
         for i in collect_coverage_from:
             item = self.__class__(i)
-            by_tile[item.get_tilename_value()].append([
-                item.get_crs(),
-                item.contains_shape(request_place),
-                item.centroid_distance_to(request_place),
-                item.overlap_percentage(request_place),
-                item.get_bbox(),
-            ])
+            by_tile[item.get_tilename_value()].append(
+                [
+                    item.get_crs(),
+                    item.contains_shape(request_place),
+                    item.centroid_distance_to(request_place),
+                    item.overlap_percentage(request_place),
+                    item.get_bbox(),
+                ]
+            )
 
         # Reduce each group using majority voting
-        by_tile_filtered = [
-            [tile_id] + [most_common(attr) for attr in zip(*vals)]
-            for tile_id, vals in by_tile.items()
-        ]
+        by_tile_filtered = [[tile_id] + [most_common(attr) for attr in zip(*vals)] for tile_id, vals in by_tile.items()]
 
         # First, try finding a containing item
         best = resolve_best_containing(by_tile_filtered)
@@ -148,9 +150,7 @@ class Sentinel2L2AProcessor(STACItemProcessor):
         tile_ids = [t[0] for t in found_tiles]
 
         # get one item with the same tile_id for the geobox
-        item = next(i
-                    for i in collect_coverage_from
-                    if self.__class__(i).get_tilename_value() == tile_ids[0])
+        item = next(i for i in collect_coverage_from if self.__class__(i).get_tilename_value() == tile_ids[0])
 
         geobox = self.__class__(item).get_geobox(request_place)
 
@@ -268,10 +268,12 @@ class Sentinel2L2AProcessor(STACItemProcessor):
             if i not in ['SCL', 'spatial_ref']:
                 multires_cube[i] = multires_cube[i].astype("float32")
                 del multires_cube[i].attrs['_FillValue']
-                multires_cube[i].encoding = {"dtype": "uint16",
-                                             "scale_factor": compute_scale_and_offset(multires_cube[i].values),
-                                             "add_offset": 0.0,
-                                             "_FillValue": 65535}
+                multires_cube[i].encoding = {
+                    "dtype": "uint16",
+                    "scale_factor": compute_scale_and_offset(multires_cube[i].values),
+                    "add_offset": 0.0,
+                    "_FillValue": 65535,
+                }
             elif i == 'SCL':
                 # if 'SCL' in multires_cube.data_vars.keys():
                 multires_cube[i] = multires_cube[i].astype("uint8")
