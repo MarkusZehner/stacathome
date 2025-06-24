@@ -237,7 +237,7 @@ def cube_to_zarr_zip(path, data):
     store.close()
 
 
-def most_common(lst):
+def most_common(iterable):
     """Returns the (first) most common element in a list.
     Parameters:
     ----------
@@ -247,7 +247,11 @@ def most_common(lst):
     -------
     The most common element in the list.
     """
-    return Counter(lst).most_common(1)[0][0]
+    if not iterable:
+        raise ValueError('iterable is empty')
+
+    most_common_elements = Counter(iterable).most_common(1)
+    return most_common_elements[0][0]
 
 
 def resolve_best_containing(items):
