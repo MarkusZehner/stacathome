@@ -46,6 +46,14 @@ dev = [
     'matplotlib',
 ]
 
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pytest",
+    "sphinx",
+    "coverage",
+]
+
 [tool.hatch.metadata]
 allow-direct-references = true
 
