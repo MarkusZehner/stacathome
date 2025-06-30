@@ -22,7 +22,7 @@ class EarthAccessProcessor(ABC):
     collection: str = ''
     supported_bands: list = []
     tilename: str = None
-    provider = EarthAccessProvider()
+    # provider = EarthAccessProvider()
     cubing = 'preferred'
     overlap = False
     gridded = False
