@@ -328,10 +328,10 @@ class ECOL2TLSTEProcessor(EarthAccessProcessor):
             logging.warning('large amount of assets, consider loading split in smaller time steps!')
 
         items = self.sort_items_by_datetime(items)
-        # items = merge_item_datetime_by_timedelta(items)
+        items = merge_item_datetime_by_timedelta(items)
 
         parameters = {
-            "groupby": merge_item_datetime_by_timedelta,
+            "groupby": "time",
             "fail_on_error": True,
         }
 
