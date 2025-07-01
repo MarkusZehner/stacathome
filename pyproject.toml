@@ -61,3 +61,12 @@ allow-direct-references = true
 skip-string-normalization = true
 line-length = 120
 target-version = ["py311", "py312", "py313"]
+
+
+[tool.pytest.ini_options]
+testpaths = [
+    "test",
+]
+markers = [
+    "remote: marks a test that connects to remote services",
+]

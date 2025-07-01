@@ -1,9 +1,8 @@
-import odc
 import earthaccess
+import odc
 import odc.stac
 
-
-from .common import BaseProvider
+from .common import BaseProvider, register_provider
 
 
 class EarthAccessProvider(BaseProvider):
@@ -16,10 +15,8 @@ class EarthAccessProvider(BaseProvider):
         granules = earthaccess.search_data(temporal=(start_time, end_time), bounding_box=bounds, **kwargs)
         return granules
 
-
     def download_from_earthaccess(cls, granules, local_path, threads, **kwargs):
         earthaccess.download(granules, local_path=local_path, threads=threads, **kwargs)
-
 
     def create_cube(self, parameters):
         data = odc.stac.load(**parameters)
@@ -27,3 +24,5 @@ class EarthAccessProvider(BaseProvider):
             raise ValueError("Failed to create cube")
         return data
 
+
+register_provider('earthaccess', EarthAccessProvider)

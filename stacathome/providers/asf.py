@@ -2,9 +2,10 @@ import asf_search
 import odc
 import odc.stac
 
-from .common import BaseProvider
+from .common import BaseProvider, register_provider
 
-class ASFProvider:
+
+class ASFProvider(BaseProvider):
 
     def request_items(request_time, request_place, **kwargs):
         wkt = request_place.wkt
@@ -31,3 +32,4 @@ class ASFProvider:
         return data
 
 
+register_provider('asf', ASFProvider)
