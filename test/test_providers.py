@@ -1,6 +1,5 @@
 import pytest
-
-from stacathome.providers import get_provider, register_provider, BaseProvider
+from stacathome.providers import BaseProvider, get_provider, register_provider
 
 
 class FakeProvider(BaseProvider):

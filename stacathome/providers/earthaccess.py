@@ -1,6 +1,10 @@
+from datetime import datetime
+
 import earthaccess
 import odc
 import odc.stac
+import pystac
+import shapely
 
 from .common import BaseProvider, register_provider
 
@@ -9,10 +13,22 @@ class EarthAccessProvider(BaseProvider):
     def __init__(self):
         earthaccess.login(persist=True)
 
-    def request_items(self, request_time: str, request_place, **kwargs):
-        bounds = request_place.bounds
-        start_time, end_time = request_time.split('/')
-        granules = earthaccess.search_data(temporal=(start_time, end_time), bounding_box=bounds, **kwargs)
+    def _request_items(
+        self,
+        collection: str,
+        starttime: datetime,
+        endtime: datetime,
+        area_of_interest: shapely.Geometry = None,
+        limit: int = None,
+        **kwargs,
+    ) -> pystac.ItemCollection:
+        granules = earthaccess.search_data(
+            short_name=collection,
+            temporal=(starttime, endtime),
+            bounding_box=area_of_interest.bounds if area_of_interest else None,
+            count=limit if limit else -1,
+            **kwargs,
+        )
         return granules
 
     def download_from_earthaccess(cls, granules, local_path, threads, **kwargs):

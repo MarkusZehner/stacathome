@@ -1,12 +1,13 @@
-import logging
 import time
+from datetime import datetime
 from functools import partial
 from typing import Callable
 
 import odc
 import planetary_computer
+import pystac
 import pystac_client
-from pystac_client.exceptions import APIError
+import shapely
 from rasterio.errors import RasterioIOError, WarpOperationError
 
 from stacathome.generic_utils import download_assets_parallel
@@ -14,34 +15,27 @@ from .common import BaseProvider, register_provider
 
 
 class STACProvider(BaseProvider):
-    def __init__(
-        self,
-        url: str,
-        sign: Callable,
-        **kwargs,
-    ):
+    def __init__(self, url: str, sign: Callable):
         self.url = url
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
-        self.extra_attributes = kwargs
 
-    def request_items(
-        self, collection: list[str], request_time: str, request_place: any = None, max_retry: int = 5, **kwargs
-    ):
-        if isinstance(collection, str):
-            collection = [collection]
-        items = None
-        for _ in range(max_retry):
-            try:
-                items = self.client.search(
-                    collections=collection, datetime=request_time, intersects=request_place, **kwargs
-                ).item_collection()
-                break
-            except APIError as e:
-                logging.warning(f"APIError: Retrying because of {e}")
-                if "429" in str(e):
-                    # Too many requests, wait and retry
-                    time.sleep(3)
+    def _request_items(
+        self,
+        collection: str,
+        starttime: datetime,
+        endtime: datetime,
+        area_of_interest: shapely.Geometry = None,
+        limit: int = None,
+        **kwargs,
+    ) -> pystac.ItemCollection:
+        items = self.client.search(
+            collections=[collection],
+            datetime=(starttime, endtime),
+            intersects=area_of_interest,
+            limit=limit,
+            **kwargs,
+        ).item_collection()
         if items is None:
             raise ValueError("Failed to get data from the API")
         return items

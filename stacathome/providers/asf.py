@@ -1,25 +1,37 @@
+from datetime import datetime
+
 import asf_search
 import odc
 import odc.stac
+import pystac
+import shapely
 
 from .common import BaseProvider, register_provider
 
 
 class ASFProvider(BaseProvider):
 
-    def request_items(request_time, request_place, **kwargs):
-        wkt = request_place.wkt
-        if '/' in request_time:
-            start_time, end_time = request_time.split('/')
-        else:
-            raise ValueError('ASF (probably) requires start and end time in form of yyyy-mm-dd/yyyy-mm-dd')
-
+    def _request_items(
+        self,
+        collection: str,
+        starttime: datetime,
+        endtime: datetime,
+        area_of_interest: shapely.Geometry = None,
+        limit: int = None,
+        **kwargs,
+    ) -> pystac.ItemCollection:
+        wkt = area_of_interest.wkt
         results = asf_search.search(
-            start=start_time,
-            end=end_time,
+            dataset=collection,
+            start=starttime,
+            end=endtime,
             intersectsWith=wkt,
+            maxResults=limit,
             **kwargs,
         )
+
+        # TODO: Convert to Stac
+
         return results
 
     def download_from_asf(urls, path, **kwargs):
