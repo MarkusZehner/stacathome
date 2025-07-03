@@ -1,16 +1,15 @@
-import time
 from datetime import datetime
 from functools import partial
 from typing import Callable
 
 import odc
+import odc.stac
 import planetary_computer
 import pystac
 import pystac_client
 import shapely
-from rasterio.errors import RasterioIOError, WarpOperationError
+import xarray as xr
 
-from stacathome.generic_utils import download_assets_parallel
 from .common import BaseProvider, register_provider
 
 
@@ -40,25 +39,19 @@ class STACProvider(BaseProvider):
             raise ValueError("Failed to get data from the API")
         return items
 
-    def download_granules_to_file(self, href_path_tuples: list[tuple]):
-        download_assets_parallel(href_path_tuples, signer=self.sign)
-
-    def download_cube(self, parameters):
-        parameters.setdefault("patch_url", self.sign)
-        data = None
-        for i in range(5):
-            try:
-                data = odc.stac.load(**parameters)
-                break
-            except (WarpOperationError, RasterioIOError):
-                print(f"Error creating cube: retry {i}", flush=True)
-                time.sleep(5)
-        if data is None:
-            raise ValueError("Failed to create cube")
+    def load_items(self, items: pystac.ItemCollection, **kwargs) -> xr.Dataset:
+        data = odc.stac.load(
+            items=items,
+            patch_url=self.sign,
+            **kwargs,
+        )
         return data
 
+    def load_granule(self, item: pystac.Item, **kwargs) -> bytes:
+        raise NotImplementedError
 
-register_provider(
-    'planetary_computer',
-    partial(STACProvider, url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign),
+
+_planetary = partial(
+    STACProvider, url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
 )
+register_provider('planetary_computer', _planetary)

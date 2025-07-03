@@ -4,9 +4,11 @@ from typing import Callable
 import pandas as pd
 import pystac
 import shapely
+import xarray as xr
 
+
+# Registry for provider classes and instances
 _provider_classes: dict[str, Callable] = {}
-
 _providers: dict[str, "BaseProvider"] = {}
 
 
@@ -89,8 +91,22 @@ class BaseProvider:
             **kwargs,
         )
 
-    def download_granules_to_file(self, href_path_tuples: list[tuple]):  #
+    def load_items(self, items: pystac.ItemCollection, **kwargs) -> xr.Dataset:
+        """
+        Load items from the provider and returns them as a merged xr.Dataset.
+
+        :param items: The item collection to load.
+        :param kwargs: Additional parameters for loading.
+        :return: Loaded item collection.
+        """
         raise NotImplementedError
 
-    def download_cube(self, parameters):
+    def load_granule(self, item: pystac.Item, **kwargs) -> bytes:
+        """
+        Load a single granule from the provider into memory
+
+        :param item: The item to load.
+        :param kwargs: Additional parameters for loading.
+        :return: Loaded granule as bytes.
+        """
         raise NotImplementedError
