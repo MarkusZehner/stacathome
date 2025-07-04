@@ -5,38 +5,12 @@ import pandas as pd
 import pystac
 import shapely
 import xarray as xr
+from odc.geo.geobox import GeoBox
 
 
 # Registry for provider classes and instances
 _provider_classes: dict[str, Callable] = {}
 _providers: dict[str, "BaseProvider"] = {}
-
-
-def get_provider(provider_name: str) -> "BaseProvider":
-    provider = _providers.get(provider_name)
-
-    if provider is None:
-        provider_cls = _provider_classes.get(provider_name)
-        if provider_cls is None:
-            raise KeyError(f"Provider '{provider_name}' is not registered.")
-        provider = provider_cls()
-        if not isinstance(provider, BaseProvider):
-            raise TypeError(f"Provider '{provider_name}' must be an instance of BaseProvider.")
-        _providers[provider_name] = provider
-
-    return provider
-
-
-def register_provider(name, factory: Callable):
-    """
-    Registers a provider class with a given name.
-
-    :param name: The name of the provider.
-    :param factory: A callable that returns an instance of the provider.
-    """
-    if not callable(factory):
-        raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
-    _provider_classes[name] = factory
 
 
 class BaseProvider:
@@ -91,11 +65,12 @@ class BaseProvider:
             **kwargs,
         )
 
-    def load_items(self, items: pystac.ItemCollection, **kwargs) -> xr.Dataset:
+    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, **kwargs) -> xr.Dataset:
         """
         Load items from the provider and returns them as a merged xr.Dataset.
 
         :param items: The item collection to load.
+        :param geobox: Optional geobox to specify the spatial extent and crs of the output.
         :param kwargs: Additional parameters for loading.
         :return: Loaded item collection.
         """
@@ -110,3 +85,30 @@ class BaseProvider:
         :return: Loaded granule as bytes.
         """
         raise NotImplementedError
+
+
+def get_provider(provider_name: str) -> BaseProvider:
+    provider = _providers.get(provider_name)
+
+    if provider is None:
+        provider_cls = _provider_classes.get(provider_name)
+        if provider_cls is None:
+            raise KeyError(f"Provider '{provider_name}' is not registered.")
+        provider = provider_cls()
+        if not isinstance(provider, BaseProvider):
+            raise TypeError(f"Provider '{provider_name}' must be an instance of BaseProvider.")
+        _providers[provider_name] = provider
+
+    return provider
+
+
+def register_provider(name, factory: Callable):
+    """
+    Registers a provider class with a given name.
+
+    :param name: The name of the provider.
+    :param factory: A callable that returns an instance of the provider.
+    """
+    if not callable(factory):
+        raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
+    _provider_classes[name] = factory

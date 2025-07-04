@@ -9,6 +9,7 @@ import pystac
 import pystac_client
 import shapely
 import xarray as xr
+from odc.geo.geobox import GeoBox
 
 from .common import BaseProvider, register_provider
 
@@ -39,10 +40,13 @@ class STACProvider(BaseProvider):
             raise ValueError("Failed to get data from the API")
         return items
 
-    def load_items(self, items: pystac.ItemCollection, **kwargs) -> xr.Dataset:
+    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, **kwargs) -> xr.Dataset:
+        groupby = kwargs.pop('groupby', 'id')
         data = odc.stac.load(
             items=items,
             patch_url=self.sign,
+            geobox=geobox,
+            groupby=groupby,
             **kwargs,
         )
         return data

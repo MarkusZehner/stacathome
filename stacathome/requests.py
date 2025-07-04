@@ -1,117 +1,124 @@
 from datetime import datetime
 from typing import Iterable
 
-from stacathome.generic_utils import most_common
-from stacathome.registry import get_processor, get_supported_bands, PROCESSOR_REGISTRY
+import pystac
+import shapely
+import xarray as xr
+from odc.geo.geobox import GeoBox
+
+from stacathome.processors import BaseProcessor, get_default_processor
+from stacathome.providers import BaseProvider, get_provider
 
 
-class STACRequest:
-    def __init__(
-        self,
-        collection: str,
-        location: str,
-        start_time: datetime,
-        end_time: datetime,
-        variables: Iterable[str] | None = None,
-    ):
-        if collection not in PROCESSOR_REGISTRY.keys():
-            raise ValueError(f'{collection} is not a valid collection. Available: {list(PROCESSOR_REGISTRY.keys())}')
+__all__ = [
+    'search_items',
+    'search_items_geoboxed',
+    'load',
+    'load_geoboxed',
+]
 
-        if start_time >= end_time:
-            raise ValueError('end_time must be after start_time')
 
-        available_vars = get_supported_bands(collection)
-        variables = variables or available_vars
+def search_items(
+    provider_name: str,
+    collection: str,
+    area_of_interest: shapely.Geometry,
+    starttime: datetime,
+    endtime: datetime,
+    processor: BaseProcessor = None,
+    no_default_processor: bool = False,
+):
+    provider = get_provider(provider_name)
+    if processor is None and not no_default_processor:
+        processor = get_default_processor(provider_name, collection)
+    if processor is None:
+        processor = BaseProcessor()
 
-        for var in variables:
-            if var not in available_vars:
-                raise ValueError(
-                    f'Variable {var} is not included in collection {collection}. Available: {available_vars}'
-                )
+    items = provider.request_items(
+        collection=collection,
+        starttime=starttime,
+        endtime=endtime,
+        area_of_interest=area_of_interest,
+    )
+    items = processor.filter_items(provider, area_of_interest, items)
+    return items
 
-        self.collection = collection
-        self.location = location
-        self.start_time = start_time
-        self.end_time = end_time
-        self.variables = set(variables)
-        self.processor_factory = get_processor(self.collection)
 
-    def request_items(self, **kwargs):
-        items = self.processor_factory.request_items(
-            self.collection, [self.start_time, self.end_time], self.location, **kwargs
-        )
-        return items
+def search_items_geoboxed(
+    provider_name: str,
+    collection: str,
+    geobox: GeoBox,
+    starttime: datetime,
+    endtime: datetime,
+    processor: BaseProcessor = None,
+    no_default_processor: bool = False,
+):
+    area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
+    return search_items(
+        provider_name=provider_name,
+        collection=collection,
+        area_of_interest=area_of_interest,
+        starttime=starttime,
+        endtime=endtime,
+        processor=processor,
+        no_default_processor=no_default_processor,
+    )
 
-    def filter_items(self, items):
-        if items and self.processor_factory.gridded:
-            if self.processor_factory.overlap:
-                items = self.processor_factory(items[0]).collect_covering_tiles_and_coverage(
-                    self.location, items=items
-                )[0]
-            else:
-                items = [
-                    item
-                    for item in items
-                    if self.processor_factory(item).does_cover_data(self.location, input_crs=4326)
-                ]
-        return items
 
-    def create_stac_items(self, path):
-        return self.processor_factory.generate_stac_items(path)
+def load(
+    provider_name: str,
+    collection: str,
+    area_of_interest: shapely.Geometry,
+    starttime: datetime,
+    endtime: datetime,
+    processor: BaseProcessor = None,
+    no_default_processor: bool = False,
+) -> tuple[pystac.ItemCollection, xr.Dataset]:
+    provider = get_provider(provider_name)
+    if processor is None and not no_default_processor:
+        processor = get_default_processor(provider_name, collection)
+    if processor is None:
+        processor = BaseProcessor()
 
-    def create_geoboxes(self, items):
-        if not items:
-            raise ValueError('Need at least one item')
-        return get_processor(items[0]).get_geobox(self.location)
+    items = provider.request_items(
+        collection=collection,
+        starttime=starttime,
+        endtime=endtime,
+        area_of_interest=area_of_interest,
+    )
 
-    def get_data(self, chunks: dict = None, name_ident=None):
-        # load data: load data to file, and to cube
-        # depending on the processors setting:
-        # cube (native per odc, preferred via pystac, userdefined if further steps are required e.g S3)
-        items = self.request_items()
-        items = self.filter_items(items)
+    items = processor.filter_items(provider, area_of_interest, items)
+    data = processor.load_items(provider, area_of_interest, items)
+    data = processor.postprocess_data(provider, area_of_interest, data)
 
-        cubes = {}
+    return items, data
 
-        # TODO !!!
-        if self.processor_factory.cubing in ['preferred', 'custom']:
-            paths = self.download_tiles(paths=None, items=items)  # TODO
 
-        # TODO !!!
-        if self.processor_factory.cubing in ['preferred']:
-            items = self.create_stac_items(paths=None)
+def load_geoboxed(
+    provider_name: str,
+    collection: str,
+    geobox: GeoBox,
+    starttime: datetime,
+    endtime: datetime,
+    processor: BaseProcessor = None,
+    no_default_processor: bool = False,
+) -> tuple[pystac.ItemCollection, xr.Dataset]:
+    provider = get_provider(provider_name)
+    if processor is None and not no_default_processor:
+        processor = get_default_processor(provider_name, collection)
+    if processor is None:
+        processor = BaseProcessor()
 
-        if not items:
-            return cubes  # TODO: decide how to deal with this edgecase
+    area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
 
-        if self.processor_factory.cubing in ['native', 'preferred']:
-            most_common_crs = most_common([get_processor(item).get_crs() for item in items])
-            most_common_crs_item = next(item for item in items if get_processor(item).get_crs() == most_common_crs)
-            geobox = get_processor(most_common_crs_item).get_geobox(self.location)
+    items = provider.request_items(
+        collection=collection,
+        starttime=starttime,
+        endtime=endtime,
+        area_of_interest=area_of_interest,
+    )
 
-            # cube  (native, preferred)
-            cubes = self.load_cubes_basic(
-                items,
-                geobox,
-                chunks=chunks,
-            )
+    items = processor.filter_items(provider, area_of_interest, items)
+    data = processor.load_items_geoboxed(provider, geobox, items)
+    data = processor.postprocess_data(provider, area_of_interest, data)
 
-        return cubes
-
-    def load_cubes_basic(
-        self,
-        items: dict,
-        geobox: dict,
-        split_by: int = None,
-        chunks: dict = None,
-    ):
-        return_cubes = {}
-
-        processor = get_processor(items[0])
-        data = processor.load_cube(items, self.variables, geobox, split_by, chunks)
-        if isinstance(data, dict):
-            for platform, dat in data.items():
-                return_cubes[platform] = dat
-        else:
-            return_cubes[self.collection] = data
-        return return_cubes
+    return items, data
