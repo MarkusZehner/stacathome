@@ -35,6 +35,7 @@ dependencies = [
     'rio-stac',
     'pyarrow',
     'earthaccess @ git+https://github.com/MarkusZehner/earthaccess.git@main',
+    'pydantic',
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,49 @@
+import pprint
+from dataclasses import field
+from typing import Iterable, Optional
+
+from pydantic.dataclasses import dataclass as pydantic_dataclass
+
+
+@pydantic_dataclass(frozen=True)
+class Variable:
+    name: str
+    longname: Optional[str] = None
+    description: Optional[str] = None
+    unit: Optional[str] = None
+    roles: list[str] = field(default_factory=list)
+
+    dtype: Optional[str] = None
+    preferred_resampling: Optional[str] = None  # possible values: nearest, bilinear, mode
+    nodata_value: Optional[int | float] = None
+    offset: Optional[int | float] = None
+    scale: Optional[int | float] = None
+    spatial_resolution: Optional[float] = None
+    center_wavelength: Optional[float] = None
+    full_width_half_max: Optional[float] = None
+
+
+class CollectionMetadata:
+
+    def __init__(self, *variables: Iterable[Variable]):
+        self._variables = {var.name: var for var in variables}
+
+    @property
+    def variables(self):
+        return self._variables
+
+    def available_variables(self) -> list[str]:
+        return list(self.variables)
+
+    def has_variable(self, variable: str) -> bool:
+        return variable in self.variables
+
+    def get_variable(self, variable: str) -> Variable | None:
+        return self.variables.get(variable)
+
+    def __str__(self):
+        vars = pprint.pformat(list(self.variables.values()), compact=True, sort_dicts=False, width=120)
+        return f'{self.__class__.__name__}(variables=\n{vars}\n)'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(variables={list(self.variables.values())})'

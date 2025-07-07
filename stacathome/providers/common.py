@@ -7,6 +7,7 @@ import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
+from stacathome.metadata import CollectionMetadata
 
 # Registry for provider classes and instances
 _provider_classes: dict[str, Callable] = {}
@@ -18,6 +19,9 @@ class BaseProvider:
     Represents a connection to a data provider. Repronsible  for session management and
     providing methods to request items, download granules, and download cubes.
     """
+
+    def get_metadata(self, collection: str) -> CollectionMetadata:
+        raise NotImplementedError
 
     def _request_items(
         self,
