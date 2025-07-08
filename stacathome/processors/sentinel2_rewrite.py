@@ -119,27 +119,28 @@ def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> li
 
     centroid_distances = {}
     latitude_distance_from_utm_center = 999999
-    return_items = None
+    return_items_contain = None
     for v in mgrs_tiles.values():
         bbox = v[0].bbox_odc_geometry
         proj = v[0].proj_code
-        centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0]-5000)
+        centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
         if wgs84_contains(bbox, area_of_interest, proj) and \
             latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
-            return_items = v
+            return_items_contain = v
             
         centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, area_of_interest)
     
-    if return_items is not None:
-        return return_items
+    if return_items_contain is not None:
+        return return_items_contain
     
     centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1], reverse=False)
     iterative_shape = None
-    return_items = []
+    #return_items = []
     for k in centroid_distances:
         if not iterative_shape:
+            print(mgrs_tiles[k])
             iterative_shape = mgrs_tiles[k][0].bbox_shapely
         else:
             iterative_shape = iterative_shape.union(mgrs_tiles[k][0].bbox_shapely)
