@@ -36,6 +36,7 @@ dependencies = [
     'pyarrow',
     'earthaccess @ git+https://github.com/MarkusZehner/earthaccess.git@main',
     'pydantic',
+    'ufmt==2.8.0',
 ]
 
 [project.optional-dependencies]

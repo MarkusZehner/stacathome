@@ -44,9 +44,16 @@ class CollectionMetadata:
     def get_variable(self, variable: str) -> Variable | None:
         return self.variables.get(variable)
 
-    def __str__(self):
+    def aspystr(self):
+        """
+        Returns this object as pretty-formated and valid python string.
+        This method differs from __repr__ with regards to formattin but is functional equivalent.
+        """
         vars = pprint.pformat(list(self.variables.values()), compact=True, sort_dicts=False, width=120)
         return f'{self.__class__.__name__}(variables=\n{vars}\n)'
+
+    def __str__(self):
+        return self.aspystr()
 
     def __repr__(self):
         return f'{self.__class__.__name__}(variables={list(self.variables.values())})'
