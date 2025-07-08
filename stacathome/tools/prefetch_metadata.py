@@ -1,5 +1,5 @@
 """
-This command line tool can be used to prefetch metadata from a Provider and store it as 
+This command line tool can be used to prefetch metadata from a Provider and store it as
 MetadataCollection objects in python files. These can then be augmented by hand to include
 missing values or correct erroneous values.
 """
@@ -10,6 +10,7 @@ import time
 from datetime import date
 
 import ufmt
+
 import stacathome
 
 
@@ -62,6 +63,7 @@ def sanitize_collection_name(collection: str):
     module = 'MD_' + collection.replace('-', '_')  # the prefix is necessary for collections starting with an number
     return module
 
+
 def get_filename(collection: str):
     return sanitize_collection_name(collection) + '.py'
 
@@ -69,26 +71,23 @@ def get_filename(collection: str):
 def get_metadata_py_file(provider: str, collection: str, metadata):
     content = METADATA_PY_TEMPLATE.format(
         creation_date=date.today(),
-        provider = provider,
-        collection = collection,
-        metadata = metadata,
+        provider=provider,
+        collection=collection,
+        metadata=metadata,
     )
-    return content 
+    return content
 
 
 def get_init_py_file(collections: list[str]):
     import_statements = [f'import {sanitize_collection_name(col)}  # noqa: F401' for col in collections]
-    content = INIT_PY_TEMPLATE.format(
-        creation_date=date.today(),
-        import_statements='\n'.join(import_statements)
-    )
+    content = INIT_PY_TEMPLATE.format(creation_date=date.today(), import_statements='\n'.join(import_statements))
     return content
 
 
 def write_py_file(path, content, overwrite=False):
     if path.exists() and not overwrite:
         raise ValueError(f"File '{path}' exists already. Invoke with '--overwrite' to write anyways.")
-    
+
     with open(path, mode='w') as f:
         bytes_written = f.write(content)
 
@@ -99,7 +98,9 @@ def write_py_file(path, content, overwrite=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--provider', '-p', required=True, help='The provider to fetch metadata from')
-    parser.add_argument('--collections', '-c', nargs='*', help='Which collections to fetch metadata from. (Default: fetch from all)')
+    parser.add_argument(
+        '--collections', '-c', nargs='*', help='Which collections to fetch metadata from. (Default: fetch from all)'
+    )
     parser.add_argument('--outdir', '-o', required=True, help='Where to store the resulting python files')
     parser.add_argument('--dry', '-d', action='store_true', help='If set, do not write files but just print to stdout')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files')
@@ -140,7 +141,11 @@ def main():
         time.sleep(1)
 
     if skipped_collections:
-        print(f'Skipped {len(skipped_collections)} because they did not provide metadata:\n -' + '\n - '.join(skipped_collections), flush=True)
+        print(
+            f'Skipped {len(skipped_collections)} because they did not provide metadata:\n -'
+            + '\n - '.join(skipped_collections),
+            flush=True,
+        )
 
     if args.generate_init:
         init_file = get_init_py_file([col for col in collections if col not in skipped_collections])

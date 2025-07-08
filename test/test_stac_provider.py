@@ -1,10 +1,9 @@
 import time
 
+import planetary_computer
 import pystac
 import pytest
 import shapely
-import planetary_computer
-
 from stacathome.metadata import CollectionMetadata
 from stacathome.providers import STACProvider
 
@@ -45,7 +44,6 @@ class TestSTACProvider:
         assert len(item_col) == 4
         assert {item.id for item in item_col} == EXPECTED_ITEM_IDS
 
-
     @pytest.mark.remote
     @pytest.mark.planetary
     def test_available_collections(self):
@@ -55,19 +53,17 @@ class TestSTACProvider:
         assert len(collections) > 0
         assert isinstance(collections[0], str)
 
-
     @pytest.mark.remote
     @pytest.mark.planetary
     @pytest.mark.long
     def test_get_metadata_all(self):
         provider = construct_provider()
         collections = provider.available_collections()
-        
+
         for collection in collections[:60]:
             metadata = provider.get_metadata(collection)
             assert metadata is None or isinstance(metadata, CollectionMetadata)
             time.sleep(1)
-
 
     @pytest.mark.remote
     @pytest.mark.planetary
@@ -111,7 +107,6 @@ class TestSTACProvider:
         metadata = provider.get_metadata('alos-palsar-mosaic')
         hh = metadata.get_variable('HH')
         assert hh.roles == ['data']
-
 
     @pytest.mark.remote
     def test_get_metadata_landsat(self):

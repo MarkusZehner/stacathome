@@ -1,16 +1,16 @@
-import pytest
 import datetime
 
+import numpy as np
 import pystac
+import pytest
 import shapely
 import xarray as xr
-import numpy as np
 from odc.geo.geobox import GeoBox
-
 from stacathome.requests import load_geoboxed, search_items_geoboxed
 
 
 MPI_BGC_COORDS = shapely.Point(680450.0, 5642969.0)  # EPSG:32632
+
 
 def mpi_geobox(resolution=10):
     bbox = (
@@ -34,9 +34,9 @@ class TestSentinel2L2AIntegration:
     @pytest.mark.planetary
     def test_search_items_geoboxed_s2l2a_raw(self):
         expected_ids = [
-            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
-            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757', 
-            'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544', 
+            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
+            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757',
+            'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544',
             'S2B_MSIL2A_20230101T102339_R065_T32UPB_20230101T222806',
         ]
 
@@ -51,8 +51,7 @@ class TestSentinel2L2AIntegration:
         )
 
         assert isinstance(items, pystac.ItemCollection)
-        assert set(item.id for item in items) == set(expected_ids)
-
+        assert {item.id for item in items} == set(expected_ids)
 
     @pytest.mark.remote
     @pytest.mark.planetary
@@ -62,15 +61,29 @@ class TestSentinel2L2AIntegration:
         # We expect all four of them to be included in the data for the raw (no processor) load function
 
         expected_ids = [
-            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
-            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757', 
-            'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544', 
+            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
+            'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757',
+            'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544',
             'S2B_MSIL2A_20230101T102339_R065_T32UPB_20230101T222806',
         ]
 
         expected_vars = {
-            'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 
-            'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP', 'visual',
+            'AOT',
+            'B01',
+            'B02',
+            'B03',
+            'B04',
+            'B05',
+            'B06',
+            'B07',
+            'B08',
+            'B09',
+            'B11',
+            'B12',
+            'B8A',
+            'SCL',
+            'WVP',
+            'visual',
         }
 
         data_vars = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11', 'B12', 'B8A']
@@ -88,7 +101,7 @@ class TestSentinel2L2AIntegration:
         assert isinstance(items, pystac.ItemCollection)
         assert isinstance(ds, xr.Dataset)
 
-        assert set(item.id for item in items) == set(expected_ids)
+        assert {item.id for item in items} == set(expected_ids)
 
         # Test if all variables are there
         assert set(ds.data_vars.keys()) == expected_vars
@@ -111,7 +124,9 @@ class TestSentinel2L2AIntegration:
 
         # Test dtypes
         for var in data_vars:
-            assert ds[var].dtype == np.dtype('float32')  # geotiff is not stored in int16, no conversion done from our side
+            assert ds[var].dtype == np.dtype(
+                'float32'
+            )  # geotiff is not stored in int16, no conversion done from our side
 
         # Test for plausible values in data layers
         for var in data_vars:
@@ -121,7 +136,7 @@ class TestSentinel2L2AIntegration:
             assert minimum >= -1000
             assert maximum <= 17000
             assert std >= 100.0
-        
+
         # Test integer values in scene classification layer
         unique_values = np.unique(ds['SCL'].values)
         assert np.isin(unique_values, np.arange(1, 12)).all()

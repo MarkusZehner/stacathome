@@ -22,10 +22,8 @@ class STACProvider(BaseProvider):
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
 
-
     def available_collections(self) -> list[str]:
         return [col.id for col in self.client.get_collections()]
-
 
     def get_metadata(self, collection) -> CollectionMetadata:
         stac_collection = self.client.get_collection(collection)
@@ -35,7 +33,7 @@ class STACProvider(BaseProvider):
         for name, asset_def in item_assets.items():
             # some providers/collections are not STAC v1 conform and don't provide roles
             # e.g. planetara-computer/alos-palsar-mosaic; here there exists a "role" top-level property
-            if asset_def.roles:  
+            if asset_def.roles:
                 roles = asset_def.roles
             elif 'role' in asset_def.properties:
                 roles = [asset_def.properties['role']]
