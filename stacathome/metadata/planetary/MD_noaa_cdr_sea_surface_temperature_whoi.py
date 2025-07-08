@@ -23,38 +23,36 @@ provider = 'planetary_computer'
 collection = 'noaa-cdr-sea-surface-temperature-whoi'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='fill_missing_qc',
-            longname=None,
-            description=None,
-            unit=None,
-            roles=['data'],
-            dtype='float32',
-            preferred_resampling=None,
-            nodata_value=float('nan'),
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='sea_surface_temperature',
-            longname=None,
-            description=None,
-            unit='degree Celsius',
-            roles=['data'],
-            dtype='float32',
-            preferred_resampling=None,
-            nodata_value=float('nan'),
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-    ]
+    Variable(
+        name='fill_missing_qc',
+        longname=None,
+        description=None,
+        unit=None,
+        roles=['data'],
+        dtype='float32',
+        preferred_resampling=None,
+        nodata_value=float('nan'),
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='sea_surface_temperature',
+        longname=None,
+        description=None,
+        unit='degree Celsius',
+        roles=['data'],
+        dtype='float32',
+        preferred_resampling=None,
+        nodata_value=float('nan'),
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
 )
 
 register_static_metadata(provider, collection, metadata)

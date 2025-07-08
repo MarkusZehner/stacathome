@@ -23,24 +23,22 @@ provider = 'planetary_computer'
 collection = 'ecmwf-forecast'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='GRIB2 data file',
-            description='The forecast data, as a grib2 file. Subsets of the data can be loaded using information from '
-            'the associated index file.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='GRIB2 data file',
+        description='The forecast data, as a grib2 file. Subsets of the data can be loaded using information from the '
+        'associated index file.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

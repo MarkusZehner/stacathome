@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'esa-cci-lc-netcdf'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='netcdf',
-            longname='ESA CCI Land Cover NetCDF 4 File',
-            description=None,
-            unit=None,
-            roles=['data', 'quality'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='netcdf',
+        longname='ESA CCI Land Cover NetCDF 4 File',
+        description=None,
+        unit=None,
+        roles=['data', 'quality'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

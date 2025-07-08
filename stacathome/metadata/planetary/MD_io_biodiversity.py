@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'io-biodiversity'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='Biodiversity Intactness',
-            description='Terrestrial biodiversity intactness at 100m resolution',
-            unit=None,
-            roles=['data'],
-            dtype='float32',
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=100.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='Biodiversity Intactness',
+        description='Terrestrial biodiversity intactness at 100m resolution',
+        unit=None,
+        roles=['data'],
+        dtype='float32',
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=100.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

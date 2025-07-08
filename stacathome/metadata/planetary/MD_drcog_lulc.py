@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'drcog-lulc'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='DRCOG LULC',
-            description='Denver Regional Council of Governments (DRCOG) Land Use Land Cover (LULC) Classifications',
-            unit='usft',
-            roles=['data'],
-            dtype='uint8',
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='DRCOG LULC',
+        description='Denver Regional Council of Governments (DRCOG) Land Use Land Cover (LULC) Classifications',
+        unit='usft',
+        roles=['data'],
+        dtype='uint8',
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

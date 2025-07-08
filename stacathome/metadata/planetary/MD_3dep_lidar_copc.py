@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = '3dep-lidar-copc'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='COPC data',
-            description=None,
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='COPC data',
+        description=None,
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

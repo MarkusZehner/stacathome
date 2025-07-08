@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'sentinel-3-synergy-aod-l2-netcdf'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='ntc-aod',
-            longname=None,
-            description='Global aerosol parameters',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='ntc-aod',
+        longname=None,
+        description='Global aerosol parameters',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

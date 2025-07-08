@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = '3dep-lidar-dtm-native'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='COG data',
-            description=None,
-            unit='metre',
-            roles=['data'],
-            dtype='float32',
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='COG data',
+        description=None,
+        unit='metre',
+        roles=['data'],
+        dtype='float32',
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

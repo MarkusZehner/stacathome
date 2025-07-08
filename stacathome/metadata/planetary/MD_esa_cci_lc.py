@@ -23,24 +23,22 @@ provider = 'planetary_computer'
 collection = 'esa-cci-lc'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='lccs_class',
-            longname='Land Cover Class Defined in the Land Cover Classification System',
-            description='Land cover class per pixel, defined using the Land Cover Classification System developed by the '
-            'United Nations Food and Agriculture Organization.',
-            unit=None,
-            roles=['data'],
-            dtype='uint8',
-            preferred_resampling=None,
-            nodata_value=0,
-            offset=None,
-            scale=None,
-            spatial_resolution=300.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='lccs_class',
+        longname='Land Cover Class Defined in the Land Cover Classification System',
+        description='Land cover class per pixel, defined using the Land Cover Classification System developed by the '
+        'United Nations Food and Agriculture Organization.',
+        unit=None,
+        roles=['data'],
+        dtype='uint8',
+        preferred_resampling=None,
+        nodata_value=0,
+        offset=None,
+        scale=None,
+        spatial_resolution=300.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

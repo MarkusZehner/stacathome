@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'sentinel-3-slstr-wst-l2-netcdf'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='l2p',
-            longname=None,
-            description='Skin Sea Surface Temperature (SST) values',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='l2p',
+        longname=None,
+        description='Skin Sea Surface Temperature (SST) values',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

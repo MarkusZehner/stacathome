@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'nrcan-landcover'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='landcover',
-            longname='Land cover of Canada COG',
-            description=None,
-            unit=None,
-            roles=['data', 'labels', 'labels-raster'],
-            dtype='uint8',
-            preferred_resampling=None,
-            nodata_value=0,
-            offset=None,
-            scale=None,
-            spatial_resolution=30.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='landcover',
+        longname='Land cover of Canada COG',
+        description=None,
+        unit=None,
+        roles=['data', 'labels', 'labels-raster'],
+        dtype='uint8',
+        preferred_resampling=None,
+        nodata_value=0,
+        offset=None,
+        scale=None,
+        spatial_resolution=30.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

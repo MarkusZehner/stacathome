@@ -23,24 +23,22 @@ provider = 'planetary_computer'
 collection = 'planet-nicfi-analytic'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='Data',
-            description="a 'ground truth' representation of spatially accurate data with minimized effects of atmosphere "
-            'and sensor characteristics',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='Data',
+        description="a 'ground truth' representation of spatially accurate data with minimized effects of atmosphere "
+        'and sensor characteristics',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)

@@ -23,38 +23,36 @@ provider = 'planetary_computer'
 collection = 'noaa-mrms-qpe-1h-pass1'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='cog',
-            longname='Processed Cloud Optimized GeoTIFF file',
-            description=None,
-            unit='mm',
-            roles=['data'],
-            dtype='float64',
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=1000.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='grib2',
-            longname='Original GRIB2 file',
-            description=None,
-            unit='mm',
-            roles=['data'],
-            dtype='float64',
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=1000.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-    ]
+    Variable(
+        name='cog',
+        longname='Processed Cloud Optimized GeoTIFF file',
+        description=None,
+        unit='mm',
+        roles=['data'],
+        dtype='float64',
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=1000.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='grib2',
+        longname='Original GRIB2 file',
+        description=None,
+        unit='mm',
+        roles=['data'],
+        dtype='float64',
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=1000.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
 )
 
 register_static_metadata(provider, collection, metadata)

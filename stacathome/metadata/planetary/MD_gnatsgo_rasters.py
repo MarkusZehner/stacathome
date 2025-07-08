@@ -23,1052 +23,1044 @@ provider = 'planetary_computer'
 collection = 'gnatsgo-rasters'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='mukey',
-            longname='mukey',
-            description='Map unit key is the unique identifier of a record in the Mapunit table. Use this column to join '
-            'the Component table to the Map Unit table and the Valu1 table to the MapUnitRaster_10m raster '
-            'map layer to map valu1 themes.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_5',
-            longname='aws0_5',
-            description='Available water storage estimate (AWS) in a standard zone 1 (0-5 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this layer based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_5',
-            longname='soc0_5',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 1 or standard zone 1 (0-5 cm depth). '
-            'The concentration of organic carbon present in the soil expressed in grams C per square meter '
-            'to a depth of 5 cm. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_5a',
-            longname='tk0_5a',
-            description='Thickness of soil components used in standard layer 1 or standard zone 1 (0-5 cm) expressed in '
-            'cm (weighted average) for the available water storage calculation. NULL values are presented '
-            'where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_5s',
-            longname='tk0_5s',
-            description='Thickness of soil components used in standard layer 1 or standard zone 1 (0-5 cm) expressed in '
-            'cm (weighted average) for the Soil Organic Carbon calculation. NULL values are presented where '
-            'data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_20',
-            longname='aws0_20',
-            description='Available water storage estimate (AWS) in standard zone 2 (0-20 cm depth), expressed in mm. The '
-            'volume of plant available water that the soil can store in this zone based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_30',
-            longname='aws0_30',
-            description='Available water storage estimate (AWS) in standard zone 3 (0-30 cm depth), expressed in mm. The '
-            'volume of plant available water that the soil can store in this zone based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws5_20',
-            longname='aws5_20',
-            description='Available water storage estimate (AWS) in standard layer 2 (5-20 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this layer based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_20',
-            longname='soc0_20',
-            description='Soil organic carbon stock estimate (SOC) in standard zone 2 (0-20 cm depth). The concentration '
-            'of organic carbon present in the soil expressed in grams C per square meter to a depth of 20 '
-            'cm. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_30',
-            longname='soc0_30',
-            description='Soil organic carbon stock estimate (SOC) in standard zone 3 (0-30 cm depth). The concentration '
-            'of organic carbon present in the soil expressed in grams C per square meter to a depth of 30 '
-            'cm. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc5_20',
-            longname='soc5_20',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 2 (5-20 cm depth). The concentration '
-            'of organic carbon present in the soil expressed in grams C per square meter for the 5-20 cm '
-            'layer. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_20a',
-            longname='tk0_20a',
-            description='Thickness of soil components used in standard zone 2 (0-20 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_20s',
-            longname='tk0_20s',
-            description='Thickness of soil components used in standard zone 2 (0-20 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_30a',
-            longname='tk0_30a',
-            description='Thickness of soil components used in standard zone 3 (0-30 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_30s',
-            longname='tk0_30s',
-            description='Thickness of soil components used in standard zone 3 (0-30 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk5_20a',
-            longname='tk5_20a',
-            description='Thickness of soil components used in standard layer 2 (5-20 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk5_20s',
-            longname='tk5_20s',
-            description='Thickness of soil components used in standard layer 2 (5-20 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_100',
-            longname='aws0_100',
-            description='Available water storage estimate (AWS) in standard zone 4 (0-100 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this zone based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_150',
-            longname='aws0_150',
-            description='Available water storage estimate (AWS) in standard zone 5 (0-150 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this zone based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws0_999',
-            longname='aws0_999',
-            description='Available water storage estimate (AWS) in total soil profile (0 cm to the reported depth of the '
-            'soil profile), expressed in mm. The volume of plant available water that the soil can store in '
-            'this layer based on all map unit components (weighted average). NULL values are presented where '
-            'data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws20_50',
-            longname='aws20_50',
-            description='Available water storage estimate (AWS) in standard layer 3 (20-50 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this layer based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='droughty',
-            longname='droughty',
-            description='zone for commodity crops that is less than or equal to 6 inches (152 mm) expressed as "1" for a '
-            'drought vulnerable soil landscape map unit or "0" for a non-droughty soil landscape map unit or '
-            'NULL for miscellaneous areas (includes water bodies) or where data were not available. It is '
-            'computed as a weighted average for major earthy components. Earthy components are those soil '
-            'series or higher level taxa components that can support crop growth (Dobos et al., 2012). Major '
-            "components are those soil components where the majorcompflag = 'Yes'",
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='nccpi3sg',
-            longname='nccpi3sg',
-            description='National Commodity Crop Productivity Index for Small Grains (weighted average) for major earthy '
-            'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
-            'components are those soil series or higher level taxa components that can support crop growth '
-            '(Dobos et al., 2012). Major components are those soil components where the majorcompflag = '
-            "'Yes' (SSURGO component table). NULL values are presented where data are incomplete or not "
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_100',
-            longname='soc0_100',
-            description='Soil organic carbon stock estimate (SOC) in standard zone 4 (0-100 cm depth). The concentration '
-            'of organic carbon present in the soil expressed in grams C per square meter to a depth of 100 '
-            'cm. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_150',
-            longname='soc0_150',
-            description='Soil organic carbon stock estimate (SOC) in standard zone 5 (0-150 cm depth). The concentration '
-            'of organic carbon present in the soil expressed in grams C per square meter to a depth of 150 '
-            'cm. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc0_999',
-            longname='soc0_999',
-            description='Soil organic carbon stock estimate (SOC) in total soil profile (0 cm to the reported depth of '
-            'the soil profile). The concentration of organic carbon present in the soil expressed in grams C '
-            'per square meter for the total reported soil profile depth. NULL values are presented where '
-            'data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc20_50',
-            longname='soc20_50',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 3 (20-50 cm depth). The '
-            'concentration of organic carbon present in the soil expressed in grams C per square meter for '
-            'the 20-50 cm layer. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_100a',
-            longname='tk0_100a',
-            description='Thickness of soil components used in standard zone 4 (0-100 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_100s',
-            longname='tk0_100s',
-            description='Thickness of soil components used in standard zone 4 (0-100 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_150a',
-            longname='tk0_150a',
-            description='Thickness of soil components used in standard zone 5 (0-150 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_150s',
-            longname='tk0_150s',
-            description='Thickness of soil components used in standard zone 5 (0-150 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_999a',
-            longname='tk0_999a',
-            description='Thickness of soil components used in total soil profile (0 cm to the reported depth of the soil '
-            'profile) expressed in cm (weighted average) for the available water storage calculation. NULL '
-            'values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk0_999s',
-            longname='tk0_999s',
-            description='Thickness of soil components used in total soil profile (0 cm to the reported depth of the soil '
-            'profile) expressed in cm (weighted average) for the Soil Organic Carbon calculation. NULL '
-            'values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk20_50a',
-            longname='tk20_50a',
-            description='Thickness of soil components used in standard layer 3 (20-50 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk20_50s',
-            longname='tk20_50s',
-            description='Thickness of soil components used in standard layer 3 (20-50 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws50_100',
-            longname='aws50_100',
-            description='Available water storage estimate (AWS) in standard layer 3 (50-100 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this layer based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='musumcpct',
-            longname='musumcpct',
-            description='The sum of the comppct_r (SSURGO component table) values for all listed components in the map '
-            'unit. Useful metadata information. NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='nccpi3all',
-            longname='nccpi3all',
-            description='National Commodity Crop Productivity Index that has the highest value among Corn and Soybeans, '
-            'Small Grains, or Cotton (weighted average) for major earthy components. Values range from .01 '
-            '(low productivity) to .99 (high productivity). Earthy components are those soil series or '
-            'higher level taxa components that can support crop growth (Dobos et al., 2012). Major '
-            "components are those soil components where the majorcompflag = 'Yes' (SSURGO component table). "
-            'NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='nccpi3cot',
-            longname='nccpi3cot',
-            description='National Commodity Crop Productivity Index for Cotton (weighted average) for major earthy '
-            'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
-            'components are those soil series or higher level taxa components that can support crop growth '
-            '(Dobos et al., 2012). Major components are those soil components where the majorcompflag = '
-            "'Yes' (SSURGO component table). NULL values are presented where data are incomplete or not "
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='nccpi3soy',
-            longname='nccpi3soy',
-            description='National Commodity Crop Productivity Index for Soybeans (weighted average) for major earthy '
-            'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
-            'components are those soil series or higher level taxa components that can support crop growth '
-            '(Dobos et al., 2012). Major components are those soil components where the majorcompflag = '
-            "'Yes' (SSURGO component table). NULL values are presented where data are incomplete or not "
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='pwsl1pomu',
-            longname='pwsl1pomu',
-            description='Potential Wetland Soil Landscapes (PWSL) is expressed as the percentage of the map unit that '
-            'meets the PWSL criteria. The hydric rating (soil component variable “hydricrating”) is an '
-            'indicator of wet soils. For version 1 (pwsl1), those soil components that meet the following '
-            'criteria are tagged as PWSL and their comppct_r values are summed for each map unit. Soil '
-            "components with hydricrating = 'YES' are considered PWSL. Soil components with hydricrating = "
-            "“NO” are not PWSL. Soil components with hydricrating = 'UNRANKED' are tested using other "
-            'attributes, and will be considered PWSL if any of the following conditions are met: drainagecl '
-            "= 'Poorly drained' or 'Very poorly drained' or the localphase or the otherph data fields "
-            'contain any of the phrases "drained" or "undrained" or "channeled" or "protected" or "ponded" '
-            'or "flooded". If these criteria do not determine the PWSL for a component and hydricrating = '
-            "'UNRANKED', then the map unit will be classified as PWSL if the map unit name contains any of "
-            'the phrases "drained" or "undrained" or "channeled" or "protected" or "ponded" or "flooded". '
-            'For version 1 (pwsl1), waterbodies are identified as "999" when map unit names match a list of '
-            'terms that identify water or intermittent water or map units have a sum of the comppct_r for '
-            '"Water" that is 80% or greater. NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='rootznaws',
-            longname='rootznaws',
-            description='Root zone (commodity crop) available water storage estimate (RZAWS) , expressed in mm, is the '
-            'volume of plant available water that the soil can store within the root zone based on all map '
-            'unit earthy major components (weighted average). Earthy components are those soil series or '
-            'higher level taxa components that can support crop growth (Dobos et al., 2012). Major '
-            "components are those soil components where the majorcompflag = 'Yes' (SSURGO component table). "
-            'NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='rootznemc',
-            longname='rootznemc',
-            description='Root zone depth is the depth within the soil profile that commodity crop (cc) roots can '
-            'effectively extract water and nutrients for growth. Root zone depth influences soil '
-            'productivity significantly. Soil component horizon criteria for root-limiting depth include: '
-            'presence of hard bedrock, soft bedrock, a fragipan, a duripan, sulfuric material, a dense '
-            'layer, a layer having a pH of less than 3.5, or a layer having an electrical conductivity of '
-            'more than 12 within the component soil profile. If no root-restricting zone is identified, a '
-            'depth of 150 cm is used to approximate the root zone depth (Dobos et al., 2012). Root zone '
-            'depth is computed for all map unit major earthy components (weighted average). Earthy '
-            'components are those soil series or higher level taxa components that can support crop growth '
-            '(Dobos et al., 2012). Major components are those soil components where the majorcompflag = '
-            "'Yes' (SSURGO component table). NULL values are presented where data are incomplete or not "
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc50_100',
-            longname='soc50_100',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 4 (50-100 cm depth). The '
-            'concentration of organic carbon present in the soil expressed in grams C per square meter for '
-            'the 50-100 cm layer. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk50_100a',
-            longname='tk50_100a',
-            description='Thickness of soil components used in standard layer 4 (50-100 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk50_100s',
-            longname='tk50_100s',
-            description='Thickness of soil components used in standard layer 4 (50-100 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws100_150',
-            longname='aws100_150',
-            description='Available water storage estimate (AWS) in standard layer 5 (100-150 cm depth), expressed in mm. '
-            'The volume of plant available water that the soil can store in this layer based on all map unit '
-            'components (weighted average). NULL values are presented where data are incomplete or not '
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='aws150_999',
-            longname='aws150_999',
-            description='Available water storage estimate (AWS) in standard layer 6 (150 cm to the reported depth of the '
-            'soil profile), expressed in mm. The volume of plant available water that the soil can store in '
-            'this layer based on all map unit components (weighted average). NULL values are presented where '
-            'data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='musumcpcta',
-            longname='musumcpcta',
-            description='The sum of the comppct_r (SSURGO component table) values used in the available water storage '
-            'calculation for the map unit. Useful metadata information. NULL values are presented where data '
-            'are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='musumcpcts',
-            longname='musumcpcts',
-            description='The sum of the comppct_r (SSURGO component table) values used in the soil organic carbon '
-            'calculation for the map unit. Useful metadata information. NULL values are presented where data '
-            'are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='nccpi3corn',
-            longname='nccpi3corn',
-            description='National Commodity Crop Productivity Index for Corn (weighted average) for major earthy '
-            'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
-            'components are those soil series or higher level taxa components that can support crop growth '
-            '(Dobos et al., 2012). Major components are those soil components where the majorcompflag = '
-            "'Yes' (SSURGO component table). NULL values are presented where data are incomplete or not "
-            'available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='pctearthmc',
-            longname='pctearthmc',
-            description='The National Commodity Crop Productivity Index map unit percent earthy is the map unit summed '
-            'comppct_r for major earthy components. Earthy components are those soil series or higher level '
-            'taxa components that can support crop growth (Dobos et al., 2012). Major components are those '
-            "soil components where the majorcompflag = 'Yes' (SSURGO component table). Useful metadata "
-            'information. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc100_150',
-            longname='soc100_150',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 5 (100-150 cm depth). The '
-            'concentration of organic carbon present in the soil expressed in grams C per square meter for '
-            'the 100-150 cm layer. NULL values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='soc150_999',
-            longname='soc150_999',
-            description='Soil organic carbon stock estimate (SOC) in standard layer 6 (150 cm to the reported depth of '
-            'the soil profile). The concentration of organic carbon present in the soil expressed in grams C '
-            'per square meter for the 150 cm and greater depth layer. NULL values are presented where data '
-            'are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk100_150a',
-            longname='tk100_150a',
-            description='Thickness of soil components used in standard layer 5 (100-150 cm) expressed in cm (weighted '
-            'average) for the available water storage calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk100_150s',
-            longname='tk100_150s',
-            description='Thickness of soil components used in standard layer 5 (100-150 cm) expressed in cm (weighted '
-            'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
-            'incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk150_999a',
-            longname='tk150_999a',
-            description='Thickness of soil components used in standard layer 6 (150 cm to the reported depth of the soil '
-            'profile) expressed in cm (weighted average) for the available water storage calculation. NULL '
-            'values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-        Variable(
-            name='tk150_999s',
-            longname='tk150_999s',
-            description='Thickness of soil components used in standard layer 6 (150 cm to the reported depth of the soil '
-            'profile) expressed in cm (weighted average) for the Soil Organic Carbon calculation. NULL '
-            'values are presented where data are incomplete or not available.',
-            unit=None,
-            roles=['data'],
-            dtype=None,
-            preferred_resampling=None,
-            nodata_value=None,
-            offset=None,
-            scale=None,
-            spatial_resolution=None,
-            center_wavelength=None,
-            full_width_half_max=None,
-        ),
-    ]
+    Variable(
+        name='mukey',
+        longname='mukey',
+        description='Map unit key is the unique identifier of a record in the Mapunit table. Use this column to join '
+        'the Component table to the Map Unit table and the Valu1 table to the MapUnitRaster_10m raster '
+        'map layer to map valu1 themes.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_5',
+        longname='aws0_5',
+        description='Available water storage estimate (AWS) in a standard zone 1 (0-5 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this layer based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_5',
+        longname='soc0_5',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 1 or standard zone 1 (0-5 cm depth). '
+        'The concentration of organic carbon present in the soil expressed in grams C per square meter to '
+        'a depth of 5 cm. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_5a',
+        longname='tk0_5a',
+        description='Thickness of soil components used in standard layer 1 or standard zone 1 (0-5 cm) expressed in '
+        'cm (weighted average) for the available water storage calculation. NULL values are presented '
+        'where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_5s',
+        longname='tk0_5s',
+        description='Thickness of soil components used in standard layer 1 or standard zone 1 (0-5 cm) expressed in '
+        'cm (weighted average) for the Soil Organic Carbon calculation. NULL values are presented where '
+        'data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_20',
+        longname='aws0_20',
+        description='Available water storage estimate (AWS) in standard zone 2 (0-20 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this zone based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_30',
+        longname='aws0_30',
+        description='Available water storage estimate (AWS) in standard zone 3 (0-30 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this zone based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws5_20',
+        longname='aws5_20',
+        description='Available water storage estimate (AWS) in standard layer 2 (5-20 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this layer based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_20',
+        longname='soc0_20',
+        description='Soil organic carbon stock estimate (SOC) in standard zone 2 (0-20 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter to a depth of 20 cm. '
+        'NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_30',
+        longname='soc0_30',
+        description='Soil organic carbon stock estimate (SOC) in standard zone 3 (0-30 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter to a depth of 30 cm. '
+        'NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc5_20',
+        longname='soc5_20',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 2 (5-20 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter for the 5-20 cm '
+        'layer. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_20a',
+        longname='tk0_20a',
+        description='Thickness of soil components used in standard zone 2 (0-20 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_20s',
+        longname='tk0_20s',
+        description='Thickness of soil components used in standard zone 2 (0-20 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_30a',
+        longname='tk0_30a',
+        description='Thickness of soil components used in standard zone 3 (0-30 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_30s',
+        longname='tk0_30s',
+        description='Thickness of soil components used in standard zone 3 (0-30 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk5_20a',
+        longname='tk5_20a',
+        description='Thickness of soil components used in standard layer 2 (5-20 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk5_20s',
+        longname='tk5_20s',
+        description='Thickness of soil components used in standard layer 2 (5-20 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_100',
+        longname='aws0_100',
+        description='Available water storage estimate (AWS) in standard zone 4 (0-100 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this zone based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_150',
+        longname='aws0_150',
+        description='Available water storage estimate (AWS) in standard zone 5 (0-150 cm depth), expressed in mm. The '
+        'volume of plant available water that the soil can store in this zone based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws0_999',
+        longname='aws0_999',
+        description='Available water storage estimate (AWS) in total soil profile (0 cm to the reported depth of the '
+        'soil profile), expressed in mm. The volume of plant available water that the soil can store in '
+        'this layer based on all map unit components (weighted average). NULL values are presented where '
+        'data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws20_50',
+        longname='aws20_50',
+        description='Available water storage estimate (AWS) in standard layer 3 (20-50 cm depth), expressed in mm. '
+        'The volume of plant available water that the soil can store in this layer based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='droughty',
+        longname='droughty',
+        description='zone for commodity crops that is less than or equal to 6 inches (152 mm) expressed as "1" for a '
+        'drought vulnerable soil landscape map unit or "0" for a non-droughty soil landscape map unit or '
+        'NULL for miscellaneous areas (includes water bodies) or where data were not available. It is '
+        'computed as a weighted average for major earthy components. Earthy components are those soil '
+        'series or higher level taxa components that can support crop growth (Dobos et al., 2012). Major '
+        "components are those soil components where the majorcompflag = 'Yes'",
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='nccpi3sg',
+        longname='nccpi3sg',
+        description='National Commodity Crop Productivity Index for Small Grains (weighted average) for major earthy '
+        'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
+        'components are those soil series or higher level taxa components that can support crop growth '
+        "(Dobos et al., 2012). Major components are those soil components where the majorcompflag = 'Yes' "
+        '(SSURGO component table). NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_100',
+        longname='soc0_100',
+        description='Soil organic carbon stock estimate (SOC) in standard zone 4 (0-100 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter to a depth of 100 '
+        'cm. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_150',
+        longname='soc0_150',
+        description='Soil organic carbon stock estimate (SOC) in standard zone 5 (0-150 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter to a depth of 150 '
+        'cm. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc0_999',
+        longname='soc0_999',
+        description='Soil organic carbon stock estimate (SOC) in total soil profile (0 cm to the reported depth of '
+        'the soil profile). The concentration of organic carbon present in the soil expressed in grams C '
+        'per square meter for the total reported soil profile depth. NULL values are presented where data '
+        'are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc20_50',
+        longname='soc20_50',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 3 (20-50 cm depth). The concentration '
+        'of organic carbon present in the soil expressed in grams C per square meter for the 20-50 cm '
+        'layer. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_100a',
+        longname='tk0_100a',
+        description='Thickness of soil components used in standard zone 4 (0-100 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_100s',
+        longname='tk0_100s',
+        description='Thickness of soil components used in standard zone 4 (0-100 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_150a',
+        longname='tk0_150a',
+        description='Thickness of soil components used in standard zone 5 (0-150 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_150s',
+        longname='tk0_150s',
+        description='Thickness of soil components used in standard zone 5 (0-150 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_999a',
+        longname='tk0_999a',
+        description='Thickness of soil components used in total soil profile (0 cm to the reported depth of the soil '
+        'profile) expressed in cm (weighted average) for the available water storage calculation. NULL '
+        'values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk0_999s',
+        longname='tk0_999s',
+        description='Thickness of soil components used in total soil profile (0 cm to the reported depth of the soil '
+        'profile) expressed in cm (weighted average) for the Soil Organic Carbon calculation. NULL values '
+        'are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk20_50a',
+        longname='tk20_50a',
+        description='Thickness of soil components used in standard layer 3 (20-50 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk20_50s',
+        longname='tk20_50s',
+        description='Thickness of soil components used in standard layer 3 (20-50 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws50_100',
+        longname='aws50_100',
+        description='Available water storage estimate (AWS) in standard layer 3 (50-100 cm depth), expressed in mm. '
+        'The volume of plant available water that the soil can store in this layer based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='musumcpct',
+        longname='musumcpct',
+        description='The sum of the comppct_r (SSURGO component table) values for all listed components in the map '
+        'unit. Useful metadata information. NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='nccpi3all',
+        longname='nccpi3all',
+        description='National Commodity Crop Productivity Index that has the highest value among Corn and Soybeans, '
+        'Small Grains, or Cotton (weighted average) for major earthy components. Values range from .01 '
+        '(low productivity) to .99 (high productivity). Earthy components are those soil series or higher '
+        'level taxa components that can support crop growth (Dobos et al., 2012). Major components are '
+        "those soil components where the majorcompflag = 'Yes' (SSURGO component table). NULL values are "
+        'presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='nccpi3cot',
+        longname='nccpi3cot',
+        description='National Commodity Crop Productivity Index for Cotton (weighted average) for major earthy '
+        'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
+        'components are those soil series or higher level taxa components that can support crop growth '
+        "(Dobos et al., 2012). Major components are those soil components where the majorcompflag = 'Yes' "
+        '(SSURGO component table). NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='nccpi3soy',
+        longname='nccpi3soy',
+        description='National Commodity Crop Productivity Index for Soybeans (weighted average) for major earthy '
+        'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
+        'components are those soil series or higher level taxa components that can support crop growth '
+        "(Dobos et al., 2012). Major components are those soil components where the majorcompflag = 'Yes' "
+        '(SSURGO component table). NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='pwsl1pomu',
+        longname='pwsl1pomu',
+        description='Potential Wetland Soil Landscapes (PWSL) is expressed as the percentage of the map unit that '
+        'meets the PWSL criteria. The hydric rating (soil component variable “hydricrating”) is an '
+        'indicator of wet soils. For version 1 (pwsl1), those soil components that meet the following '
+        'criteria are tagged as PWSL and their comppct_r values are summed for each map unit. Soil '
+        "components with hydricrating = 'YES' are considered PWSL. Soil components with hydricrating = "
+        "“NO” are not PWSL. Soil components with hydricrating = 'UNRANKED' are tested using other "
+        'attributes, and will be considered PWSL if any of the following conditions are met: drainagecl = '
+        "'Poorly drained' or 'Very poorly drained' or the localphase or the otherph data fields contain "
+        'any of the phrases "drained" or "undrained" or "channeled" or "protected" or "ponded" or '
+        '"flooded". If these criteria do not determine the PWSL for a component and hydricrating = '
+        "'UNRANKED', then the map unit will be classified as PWSL if the map unit name contains any of "
+        'the phrases "drained" or "undrained" or "channeled" or "protected" or "ponded" or "flooded". For '
+        'version 1 (pwsl1), waterbodies are identified as "999" when map unit names match a list of terms '
+        'that identify water or intermittent water or map units have a sum of the comppct_r for "Water" '
+        'that is 80% or greater. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='rootznaws',
+        longname='rootznaws',
+        description='Root zone (commodity crop) available water storage estimate (RZAWS) , expressed in mm, is the '
+        'volume of plant available water that the soil can store within the root zone based on all map '
+        'unit earthy major components (weighted average). Earthy components are those soil series or '
+        'higher level taxa components that can support crop growth (Dobos et al., 2012). Major components '
+        "are those soil components where the majorcompflag = 'Yes' (SSURGO component table). NULL values "
+        'are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='rootznemc',
+        longname='rootznemc',
+        description='Root zone depth is the depth within the soil profile that commodity crop (cc) roots can '
+        'effectively extract water and nutrients for growth. Root zone depth influences soil productivity '
+        'significantly. Soil component horizon criteria for root-limiting depth include: presence of hard '
+        'bedrock, soft bedrock, a fragipan, a duripan, sulfuric material, a dense layer, a layer having a '
+        'pH of less than 3.5, or a layer having an electrical conductivity of more than 12 within the '
+        'component soil profile. If no root-restricting zone is identified, a depth of 150 cm is used to '
+        'approximate the root zone depth (Dobos et al., 2012). Root zone depth is computed for all map '
+        'unit major earthy components (weighted average). Earthy components are those soil series or '
+        'higher level taxa components that can support crop growth (Dobos et al., 2012). Major components '
+        "are those soil components where the majorcompflag = 'Yes' (SSURGO component table). NULL values "
+        'are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc50_100',
+        longname='soc50_100',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 4 (50-100 cm depth). The '
+        'concentration of organic carbon present in the soil expressed in grams C per square meter for '
+        'the 50-100 cm layer. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk50_100a',
+        longname='tk50_100a',
+        description='Thickness of soil components used in standard layer 4 (50-100 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk50_100s',
+        longname='tk50_100s',
+        description='Thickness of soil components used in standard layer 4 (50-100 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws100_150',
+        longname='aws100_150',
+        description='Available water storage estimate (AWS) in standard layer 5 (100-150 cm depth), expressed in mm. '
+        'The volume of plant available water that the soil can store in this layer based on all map unit '
+        'components (weighted average). NULL values are presented where data are incomplete or not '
+        'available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='aws150_999',
+        longname='aws150_999',
+        description='Available water storage estimate (AWS) in standard layer 6 (150 cm to the reported depth of the '
+        'soil profile), expressed in mm. The volume of plant available water that the soil can store in '
+        'this layer based on all map unit components (weighted average). NULL values are presented where '
+        'data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='musumcpcta',
+        longname='musumcpcta',
+        description='The sum of the comppct_r (SSURGO component table) values used in the available water storage '
+        'calculation for the map unit. Useful metadata information. NULL values are presented where data '
+        'are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='musumcpcts',
+        longname='musumcpcts',
+        description='The sum of the comppct_r (SSURGO component table) values used in the soil organic carbon '
+        'calculation for the map unit. Useful metadata information. NULL values are presented where data '
+        'are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='nccpi3corn',
+        longname='nccpi3corn',
+        description='National Commodity Crop Productivity Index for Corn (weighted average) for major earthy '
+        'components. Values range from .01 (low productivity) to .99 (high productivity). Earthy '
+        'components are those soil series or higher level taxa components that can support crop growth '
+        "(Dobos et al., 2012). Major components are those soil components where the majorcompflag = 'Yes' "
+        '(SSURGO component table). NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='pctearthmc',
+        longname='pctearthmc',
+        description='The National Commodity Crop Productivity Index map unit percent earthy is the map unit summed '
+        'comppct_r for major earthy components. Earthy components are those soil series or higher level '
+        'taxa components that can support crop growth (Dobos et al., 2012). Major components are those '
+        "soil components where the majorcompflag = 'Yes' (SSURGO component table). Useful metadata "
+        'information. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc100_150',
+        longname='soc100_150',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 5 (100-150 cm depth). The '
+        'concentration of organic carbon present in the soil expressed in grams C per square meter for '
+        'the 100-150 cm layer. NULL values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='soc150_999',
+        longname='soc150_999',
+        description='Soil organic carbon stock estimate (SOC) in standard layer 6 (150 cm to the reported depth of '
+        'the soil profile). The concentration of organic carbon present in the soil expressed in grams C '
+        'per square meter for the 150 cm and greater depth layer. NULL values are presented where data '
+        'are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk100_150a',
+        longname='tk100_150a',
+        description='Thickness of soil components used in standard layer 5 (100-150 cm) expressed in cm (weighted '
+        'average) for the available water storage calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk100_150s',
+        longname='tk100_150s',
+        description='Thickness of soil components used in standard layer 5 (100-150 cm) expressed in cm (weighted '
+        'average) for the Soil Organic Carbon calculation. NULL values are presented where data are '
+        'incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk150_999a',
+        longname='tk150_999a',
+        description='Thickness of soil components used in standard layer 6 (150 cm to the reported depth of the soil '
+        'profile) expressed in cm (weighted average) for the available water storage calculation. NULL '
+        'values are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
+    Variable(
+        name='tk150_999s',
+        longname='tk150_999s',
+        description='Thickness of soil components used in standard layer 6 (150 cm to the reported depth of the soil '
+        'profile) expressed in cm (weighted average) for the Soil Organic Carbon calculation. NULL values '
+        'are presented where data are incomplete or not available.',
+        unit=None,
+        roles=['data'],
+        dtype=None,
+        preferred_resampling=None,
+        nodata_value=None,
+        offset=None,
+        scale=None,
+        spatial_resolution=None,
+        center_wavelength=None,
+        full_width_half_max=None,
+    ),
 )
 
 register_static_metadata(provider, collection, metadata)

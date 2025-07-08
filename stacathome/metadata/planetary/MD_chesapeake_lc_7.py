@@ -23,23 +23,21 @@ provider = 'planetary_computer'
 collection = 'chesapeake-lc-7'
 
 metadata = CollectionMetadata(
-    variables=[
-        Variable(
-            name='data',
-            longname='Land Cover Classes',
-            description=None,
-            unit=None,
-            roles=['data'],
-            dtype='uint8',
-            preferred_resampling=None,
-            nodata_value=15,
-            offset=None,
-            scale=None,
-            spatial_resolution=1.0,
-            center_wavelength=None,
-            full_width_half_max=None,
-        )
-    ]
+    Variable(
+        name='data',
+        longname='Land Cover Classes',
+        description=None,
+        unit=None,
+        roles=['data'],
+        dtype='uint8',
+        preferred_resampling=None,
+        nodata_value=15,
+        offset=None,
+        scale=None,
+        spatial_resolution=1.0,
+        center_wavelength=None,
+        full_width_half_max=None,
+    )
 )
 
 register_static_metadata(provider, collection, metadata)
