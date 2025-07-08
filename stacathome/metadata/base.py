@@ -50,13 +50,17 @@ class CollectionMetadata:
         This method differs from __repr__ with regards to formattin but is functional equivalent.
         """
         vars = pprint.pformat(list(self.variables.values()), compact=True, sort_dicts=False, width=120)
-        return f'{self.__class__.__name__}(variables=\n{vars}\n)'
+        repr = f'{self.__class__.__name__}(variables=\n{vars}\n)'
+        repr = repr.replace('=nan', "=float('nan')")
+        return repr
 
     def __str__(self):
         return self.aspystr()
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(variables={list(self.variables.values())})'
+        repr = f'{self.__class__.__name__}(variables={list(self.variables.values())})'
+        repr = repr.replace('=nan', "=float('nan')")
+        return repr
 
 
 def register_static_metadata(provider_name: str, collection: str, metadata: CollectionMetadata):

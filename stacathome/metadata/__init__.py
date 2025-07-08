@@ -11,4 +11,4 @@ __all__ = [
 
 # Import metadata packages
 
-import planetary  # noqa: F401
+from . import planetary  # noqa: F401
