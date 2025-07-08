@@ -7,3 +7,8 @@ __all__ = [
     'has_static_metadata',
     'register_static_metadata',
 ]
+
+
+# Import metadata packages
+
+import planetary  # noqa: F401
