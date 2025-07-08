@@ -8,6 +8,7 @@ import xarray as xr
 import pystac
 import shapely
 from shapely import box, Polygon, transform
+from odc.geo.geom import Geometry
 
 from stacathome.generic_utils import (
     arange_bounds,
@@ -21,6 +22,7 @@ from stacathome.generic_utils import (
 )
 from .base import BaseProcessor, register_default_processor
 from stacathome.providers import BaseProvider
+from stacathome.geo import wgs84_contains, wgs84_overlap_percentage, centroid_distance
     
 
 class S2Item(pystac.Item):
@@ -84,7 +86,70 @@ class S2Item(pystac.Item):
         Get the bounding box of the item as a shapely object.
         """
         return box(*self._item.bbox)
+    
+    @cached_property
+    def bbox_odc_geometry(self):
+        """
+        Get the bounding box of the item as a shapely object.
+        """
+        return Geometry(box(*self._item.bbox), '4326')
 
+
+def s2_pc_filter_newest_processing_time(items: list) -> list:
+    """
+    Returns the newest veriosn of S2 L2A items using the processing time from the ID.
+    The ID is expected to be in the format 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
+    """
+    filtered = {}
+    for item in items:
+        native_id = item._item.id
+        base_name, process_time = native_id.rsplit('_', 1)
+        if base_name not in filtered or process_time > filtered[base_name][0]:
+            filtered[base_name] = (process_time, item)
+    return [v[1] for v in filtered.values()]
+
+def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> list:
+    """
+    Filter Sentinel-2 items based on their coverage of the area of interest.
+    Returns a list items required to cover the area of interest.
+    """
+    mgrs_tiles = defaultdict(list)
+    for item in items:
+        mgrs_tiles[item.mgrs_tile].append(item)
+
+    centroid_distances = {}
+    latitude_distance_from_utm_center = 999999
+    return_items = None
+    for v in mgrs_tiles.values():
+        bbox = v[0].bbox_odc_geometry
+        proj = v[0].proj_code
+        centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0]-5000)
+
+        if wgs84_contains(bbox, area_of_interest, proj) and \
+            latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
+            latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
+            return_items = v
+            
+        centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, area_of_interest)
+    
+    if return_items is not None:
+        return return_items
+    
+    centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1], reverse=False)
+    iterative_shape = None
+    return_items = []
+    for k in centroid_distances:
+        if not iterative_shape:
+            iterative_shape = mgrs_tiles[k][0].bbox_shapely
+        else:
+            iterative_shape = iterative_shape.union(mgrs_tiles[k][0].bbox_shapely)
+
+        return_items.extend(mgrs_tiles[k])
+
+        if wgs84_contains(iterative_shape, area_of_interest, proj):
+            return return_items
+        
+    return return_items
 
 class Sentinel2L2AProcessor(BaseProcessor):
      
@@ -94,35 +159,24 @@ class Sentinel2L2AProcessor(BaseProcessor):
         """
         self.convert_to_f32 = convert_to_f32
         self.adjust_baseline = adjust_baseline
-
-
+    
     def filter_items(self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection) -> pystac.ItemCollection:
+        """
+
+        Filter Sentinel-2 items based on the area of interest and the newest processing time.
+        This function filters the items to ensure they cover the area of interest and selects the newest processing time for each item.
+
+        """
+
+
         s2_items = [S2Item(item) for item in items]
 
-        # group by MGRS tile
-        mgrs_tiles = defaultdict(list)
-        for item in s2_items:
-            mgrs_tiles[item.mgrs_tile].append(item)
+        s2_items = s2_pc_filter_newest_processing_time(s2_items)
 
-        """
-        # try to find the best mgrs tiles to use
-        # if fully contained and at the center of a tile (not overlapping) -> use that tile
-        # if shape overlaps with multiple tiles, but fully contained -> use tile with the least distance to the shape centroid
-        # if shape overlaps with multiple tiles, use all of them
+        s2_items = s2_pc_filter_coverage(s2_items, area_of_interest)
 
-        # First, try finding a containing item
-        best = resolve_best_containing(by_tile_filtered)
-        if best:
-            found_tiles = [best]
-        else:
-            found_tiles = merge_to_cover(by_tile_filtered, request_place)
-
-        tile_ids = [t[0] for t in found_tiles]
-        """
-        allowed_tile_ids = set(mgrs_tiles.keys())
-        filtered = [item._item for item in s2_items if item.mgrs_tile in allowed_tile_ids]
         return pystac.ItemCollection(
-            items=filtered,
+            items=s2_items,
             clone_items=False,
             extra_fields=items.extra_fields,
         )
