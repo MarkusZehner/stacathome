@@ -71,11 +71,9 @@ class TestSTACProvider:
 
     @pytest.mark.remote
     @pytest.mark.planetary
-    def test_get_metadata(self):
+    def test_get_metadata_sentinel2(self):
         provider = construct_provider()
-
         metadata = provider.get_metadata('sentinel-2-l2a')
-        assert isinstance(metadata, CollectionMetadata)
 
         EXPECTED_VARS = {
             'AOT',
@@ -104,11 +102,21 @@ class TestSTACProvider:
         assert b01.roles == ['data']
 
     @pytest.mark.remote
+    @pytest.mark.planetary
+    def test_get_metadata_alos_palsar_mosaic(self):
+        # This is a weird edge-case where planetary-computer is not STAC v1 conform!
+        # For this collections, asset_def.roles does not exist, instead there is a asset_def.role property.
+        # We should make a best-effort to catch this.
+        provider = construct_provider()
+        metadata = provider.get_metadata('alos-palsar-mosaic')
+        hh = metadata.get_variable('HH')
+        assert hh.roles == ['data']
+
+
+    @pytest.mark.remote
     def test_get_metadata_landsat(self):
         provider = construct_provider()
-
         metadata = provider.get_metadata('landsat-c2-l2')
-        assert isinstance(metadata, CollectionMetadata)
 
         EXPECTED_VARS = {
             'qa',
