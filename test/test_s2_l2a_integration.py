@@ -31,6 +31,7 @@ def mpi_geobox(resolution=10):
 class TestSentinel2L2AIntegration:
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_search_items_geoboxed_s2l2a_raw(self):
         expected_ids = [
             'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
@@ -54,6 +55,7 @@ class TestSentinel2L2AIntegration:
 
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_load_geoboxed_s2l2a_raw(self):
         # This is actually a special case:
         # We have 4 items here, but only two observations, two items are reprocessings!

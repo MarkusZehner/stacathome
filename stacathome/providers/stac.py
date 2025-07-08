@@ -22,6 +22,11 @@ class STACProvider(BaseProvider):
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
 
+
+    def available_collections(self) -> list[str]:
+        return [col.id for col in self.client.get_collections()]
+
+
     def get_metadata(self, collection) -> CollectionMetadata:
         stac_collection = self.client.get_collection(collection)
         item_assets = stac_collection.item_assets
