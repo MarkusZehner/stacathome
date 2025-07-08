@@ -5,6 +5,9 @@ from typing import Iterable, Optional
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 
+_metadata_registry: dict[tuple[str, str], 'CollectionMetadata'] = {}
+
+
 @pydantic_dataclass(frozen=True)
 class Variable:
     name: str
@@ -47,3 +50,19 @@ class CollectionMetadata:
 
     def __repr__(self):
         return f'{self.__class__.__name__}(variables={list(self.variables.values())})'
+
+
+def register_static_metadata(provider_name: str, collection: str, metadata: CollectionMetadata):
+    key = (provider_name, collection)
+    if key in _metadata_registry:
+        raise ValueError(f'Processor for {provider_name} and {collection} is already registered.')
+    _metadata_registry[(provider_name, collection)] = metadata
+
+
+def has_static_metadata(provider_name: str, collection: str) -> bool:
+    return (provider_name, collection) in _metadata_registry
+
+
+def get_static_metadata(provider_name: str, collection: str) -> CollectionMetadata | None:
+    key = (provider_name, collection)
+    return _metadata_registry.get(key)
