@@ -69,5 +69,7 @@ testpaths = [
     "test",
 ]
 markers = [
+    "long: marks a long-running test",
     "remote: marks a test that connects to remote services",
+    "planetary: marks a test that connects to Microsoft's planetary-computer",
 ]
