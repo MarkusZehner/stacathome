@@ -1,9 +1,13 @@
 from .requests import load, load_geoboxed, search_items, search_items_geoboxed
-
+from .providers import get_provider, register_provider, BaseProvider
 
 __all__ = [
     'search_items',
     'search_items_geoboxed',
     'load',
     'load_geoboxed',
+
+    'get_provider',
+    'register_provider',
+    'BaseProvider'
 ]
