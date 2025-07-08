@@ -1,3 +1,5 @@
+import time
+
 import pystac
 import pytest
 import shapely
@@ -52,6 +54,21 @@ class TestSTACProvider:
         assert isinstance(collections, list)
         assert len(collections) > 0
         assert isinstance(collections[0], str)
+
+
+    @pytest.mark.remote
+    @pytest.mark.planetary
+    @pytest.mark.long
+    def test_get_metadata_all(self):
+        provider = construct_provider()
+        collections = provider.available_collections()
+        
+        for collection in collections[:60]:
+            metadata = provider.get_metadata(collection)
+            assert metadata is None or isinstance(metadata, CollectionMetadata)
+            time.sleep(1)
+
+
     @pytest.mark.remote
     @pytest.mark.planetary
     def test_get_metadata(self):

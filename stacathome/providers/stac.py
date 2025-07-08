@@ -33,14 +33,14 @@ class STACProvider(BaseProvider):
 
         variables = []
         for name, asset_def in item_assets.items():
-            if 'data' not in asset_def.roles:
+            if asset_def.roles and 'data' not in asset_def.roles:
                 continue
 
             var = Variable(name)
 
             longname = asset_def.title
             description = asset_def.description
-            roles = list(asset_def.roles)
+            roles = list(asset_def.roles) if asset_def.roles else []
             dtype = None
 
             spatial_resolution = asset_def.properties.get('gsd')
