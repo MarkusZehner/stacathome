@@ -1,11 +1,12 @@
 import pytest
 from stacathome.metadata import (
-    Variable,
     CollectionMetadata,
-    register_static_metadata,
-    has_static_metadata,
     get_static_metadata,
+    has_static_metadata,
+    register_static_metadata,
+    Variable,
 )
+
 
 class TestVariable:
 
@@ -18,13 +19,13 @@ class TestVariable:
         # name is required
         with pytest.raises(ValueError):
             Variable()
-    
+
         # dtype can be any string or None
         var = Variable(name='B01', dtype='uint16')
         assert var.dtype == 'uint16'
 
         var = Variable(name='B01', dtype=None)
-        assert var.dtype is None 
+        assert var.dtype is None
 
         with pytest.raises(ValueError):
             Variable(name='B01', dtype=12345)
@@ -48,14 +49,23 @@ class TestCollectionMetadata:
         assert set(meta.available_variables()) == {'B01', 'B02'}
 
     def test_aspystr_and_repr(self):
-        v = Variable(name='B01')
-        meta = CollectionMetadata(v)
+        v1 = Variable(name='B01', description='test1')
+        v2 = Variable(name='B02', description='test2')
+        meta = CollectionMetadata(v1, v2)
+
         s = meta.aspystr()
-        assert 'CollectionMetadata' in s
-        assert 'B01' in s
+        recon = eval(s)
+        assert isinstance(recon, CollectionMetadata)
+        assert set(recon.available_variables()) == {'B01', 'B02'}
+        assert isinstance(recon.get_variable('B01'), Variable)
+        assert recon.get_variable('B01').description == 'test1'
+
         r = repr(meta)
-        assert 'CollectionMetadata' in r
-        assert 'B01' in r
+        recon = eval(r)
+        assert isinstance(recon, CollectionMetadata)
+        assert set(recon.available_variables()) == {'B01', 'B02'}
+        assert isinstance(recon.get_variable('B01'), Variable)
+        assert recon.get_variable('B01').description == 'test1'
 
 
 class TestMetadataRegistry:
@@ -64,6 +74,7 @@ class TestMetadataRegistry:
         # Clear the registry before each test
         # Access the private registry for test isolation
         from stacathome.metadata.base import _metadata_registry
+
         _metadata_registry.clear()
 
     def test_register_and_has_static_metadata(self):

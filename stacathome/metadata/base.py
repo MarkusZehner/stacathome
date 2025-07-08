@@ -49,18 +49,20 @@ class CollectionMetadata:
         Returns this object as pretty-formated and valid python string.
         This method differs from __repr__ with regards to formattin but is functional equivalent.
         """
-        vars = pprint.pformat(list(self.variables.values()), compact=True, sort_dicts=False, width=120)
-        repr = f'{self.__class__.__name__}(variables=\n{vars}\n)'
-        repr = repr.replace('=nan', "=float('nan')")
-        return repr
+        pp_vars = []
+        for var in self.variables.values():
+            pp_vars.append(pprint.pformat(var, compact=True, sort_dicts=False, width=120))
+        var_str = ',\n'.join(pp_vars)
+        str = f'{self.__class__.__name__}({var_str})'
+        return str.replace('=nan', "=float('nan')")  # workaround for https://bugs.python.org/issue1732212
 
     def __str__(self):
         return self.aspystr()
 
     def __repr__(self):
-        repr = f'{self.__class__.__name__}(variables={list(self.variables.values())})'
-        repr = repr.replace('=nan', "=float('nan')")
-        return repr
+        var_str = ','.join(repr(var) for var in self.variables.values())
+        str = f'{self.__class__.__name__}({var_str})'
+        return str.replace('=nan', "=float('nan')")  # workaround for https://bugs.python.org/issue1732212
 
 
 def register_static_metadata(provider_name: str, collection: str, metadata: CollectionMetadata):
