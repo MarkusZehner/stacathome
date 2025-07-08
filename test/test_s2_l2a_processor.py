@@ -29,8 +29,6 @@ class TestSentinel2L2AProcessor:
     def test_filtering(self):
         provider = get_provider('planetary_computer')
         processor = Sentinel2L2AProcessor()
-        geobox = test_geobox(NEAR_TILE_CORNER, resolution=10, size_box=5000)
-        print('request_area', geobox.footprint('EPSG:32632', buffer=0, npoints=4))
 
         # these contain 6 tiles * 3 time steps * 2 processing times
         expected_ids_raw = [
@@ -85,8 +83,8 @@ class TestSentinel2L2AProcessor:
             'S2B_MSIL2A_20230101T102339_R065_T33UUU_20240806T223544',
             ]
 
+        geobox = test_geobox(NEAR_TILE_CORNER, resolution=10, size_box=5000)
         area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
-
         items = provider.request_items(
             collection='sentinel-2-l2a',
             starttime='2023-01-01',
@@ -107,6 +105,15 @@ class TestSentinel2L2AProcessor:
             items=items,
         )
 
+        geobox_large = test_geobox(NEAR_TILE_CORNER, resolution=10, size_box=10000)
+        filtered_items_large = processor.filter_items(
+            provider=None,
+            area_of_interest=geobox_large.footprint('EPSG:4326', buffer=0, npoints=4),
+            items=items,
+        )
+
         assert set(item.id for item in items) == set(expected_ids_raw)
         assert set(item.id for item in filtered_items) == set(filter_1)
         assert set(item.id for item in filtered_items_shift) == set(filter_2)
+
+        print([i for i in filtered_items_large])

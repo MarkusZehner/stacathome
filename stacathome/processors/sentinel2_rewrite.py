@@ -118,8 +118,8 @@ def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> li
         mgrs_tiles[item.mgrs_tile].append(item)
 
     centroid_distances = {}
-    latitude_distance_from_utm_center = 999999
-    return_items_contain = None
+    latitude_distance_from_utm_center = 9999999
+    return_items = None
     for v in mgrs_tiles.values():
         bbox = v[0].bbox_odc_geometry
         proj = v[0].proj_code
@@ -128,28 +128,25 @@ def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> li
         if wgs84_contains(bbox, area_of_interest, proj) and \
             latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
-            return_items_contain = v
+            return_items = v
             
         centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, area_of_interest)
     
-    if return_items_contain is not None:
-        return return_items_contain
-    
-    centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1], reverse=False)
-    iterative_shape = None
-    #return_items = []
-    for k in centroid_distances:
-        if not iterative_shape:
-            print(mgrs_tiles[k])
-            iterative_shape = mgrs_tiles[k][0].bbox_shapely
-        else:
-            iterative_shape = iterative_shape.union(mgrs_tiles[k][0].bbox_shapely)
+    if return_items is None:
+        centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1], reverse=False)
+        iterative_shape = None
+        return_items = []
+        for k, _ in centroid_distances:
+            if not iterative_shape:
+                print(mgrs_tiles[k])
+                iterative_shape = mgrs_tiles[k][0].bbox_odc_geometry
+            else:
+                iterative_shape = iterative_shape.union(mgrs_tiles[k][0].bbox_odc_geometry)
 
-        return_items.extend(mgrs_tiles[k])
+            return_items.extend(mgrs_tiles[k])
 
-        if wgs84_contains(iterative_shape, area_of_interest, proj):
-            return return_items
-        
+            if wgs84_contains(iterative_shape, area_of_interest, proj):
+                return return_items         
     return return_items
 
 class Sentinel2L2AProcessor(BaseProcessor):
