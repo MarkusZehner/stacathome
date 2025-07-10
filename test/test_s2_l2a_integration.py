@@ -6,13 +6,14 @@ import pytest
 import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
+from stacathome.processors.sentinel2_rewrite import S2Item, Sentinel2L2AProcessor
 from stacathome.requests import load_geoboxed, search_items_geoboxed
-from stacathome.processors.sentinel2_rewrite import Sentinel2L2AProcessor, S2Item
 
 
 MPI_BGC_COORDS = shapely.Point(680450.0, 5642969.0)  # EPSG:32632
-NEAR_TILE_CORNER = shapely.Point(705800, 5896040) # EPSG:32632
-NEAR_TILE_CORNER_SHIFT = shapely.Point(705800+5000, 5896040+5000) # EPSG:32632
+NEAR_TILE_CORNER = shapely.Point(705800, 5896040)  # EPSG:32632
+NEAR_TILE_CORNER_SHIFT = shapely.Point(705800 + 5000, 5896040 + 5000)  # EPSG:32632
+
 
 def test_geobox(center, crs='EPSG:32632', resolution=10, size=500):
     bbox = (
@@ -35,9 +36,9 @@ class TestSentinel2L2AIntegration:
     # @pytest.mark.remote
     # def test_search_items_geoboxed_s2l2a_raw(self):
     #     expected_ids = [
-    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
-    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757', 
-    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544', 
+    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
+    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757',
+    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544',
     #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20230101T222806',
     #     ]
 
@@ -54,7 +55,6 @@ class TestSentinel2L2AIntegration:
     #     assert isinstance(items, pystac.ItemCollection)
     #     assert set(item.id for item in items) == set(expected_ids)
 
-
     # @pytest.mark.remote
     # def test_load_geoboxed_s2l2a_raw(self):
     #     # This is actually a special case:
@@ -62,14 +62,14 @@ class TestSentinel2L2AIntegration:
     #     # We expect all four of them to be included in the data for the raw (no processor) load function
 
     #     expected_ids = [
-    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
-    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757', 
-    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544', 
+    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
+    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20230107T001757',
+    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544',
     #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20230101T222806',
     #     ]
 
     #     expected_vars = {
-    #         'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 
+    #         'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07',
     #         'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP', 'visual',
     #     }
 
@@ -121,11 +121,10 @@ class TestSentinel2L2AIntegration:
     #         assert minimum >= -1000
     #         assert maximum <= 17000
     #         assert std >= 100.0
-        
+
     #     # Test integer values in scene classification layer
     #     unique_values = np.unique(ds['SCL'].values)
     #     assert np.isin(unique_values, np.arange(1, 12)).all()
-
 
     # @pytest.mark.remote
     # def test_load_geoboxed_s2l2a_processor(self):
@@ -134,12 +133,12 @@ class TestSentinel2L2AIntegration:
     #     # We expect all four of them to be included in the data for the raw (no processor) load function
 
     #     expected_ids = [
-    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608', 
-    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544', 
+    #         'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
+    #         'S2B_MSIL2A_20230101T102339_R065_T32UPB_20240806T223544',
     #     ]
 
     #     expected_vars = {
-    #         'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 
+    #         'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07',
     #         'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP', 'visual',
     #     }
 
@@ -191,7 +190,7 @@ class TestSentinel2L2AIntegration:
     #         assert minimum >= -1000
     #         assert maximum <= 17000
     #         assert std >= 100.0
-        
+
     #     # Test integer values in scene classification layer
     #     unique_values = np.unique(ds['SCL'].values)
     #     assert np.isin(unique_values, np.arange(1, 12)).all()
@@ -224,7 +223,7 @@ class TestSentinel2L2AIntegration:
         filter_1 = [
             'S2A_MSIL2A_20230106T102411_R065_T32UQC_20240807T164608',
             'S2B_MSIL2A_20230101T102339_R065_T32UQC_20240806T223544',
-            ]
+        ]
 
         expected_vars = {
             'AOT',
@@ -258,29 +257,27 @@ class TestSentinel2L2AIntegration:
             no_default_processor=True,
         )
 
-        area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
+        roi = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
 
         items = provider.request_items(
             collection=collection,
             starttime=starttime,
             endtime=endtime,
-            area_of_interest=area_of_interest,
+            roi=roi,
         )
 
         filtered_items = Sentinel2L2AProcessor().filter_items(
             provider=None,
-            area_of_interest=geobox.footprint('EPSG:4326', buffer=0, npoints=4),
+            roi=geobox.footprint('EPSG:4326', buffer=0, npoints=4),
             items=items,
         )
 
         geobox_shift = test_geobox(NEAR_TILE_CORNER_SHIFT, resolution=10)
         filtered_items_shift = Sentinel2L2AProcessor().filter_items(
             provider=None,
-            area_of_interest=geobox_shift.footprint('EPSG:4326', buffer=0, npoints=4),
+            roi=geobox_shift.footprint('EPSG:4326', buffer=0, npoints=4),
             items=items,
         )
-        
-        
 
         for i in items:
             i = S2Item(i)

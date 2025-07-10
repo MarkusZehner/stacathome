@@ -50,7 +50,7 @@ class TestSTACProvider:
     def test_get_items_planetary(self):
         start = '2023-01-01'
         end = '2023-01-02'
-        area_of_interest = shapely.box(11, 51, 11.5, 51.5)
+        roi = shapely.box(11, 51, 11.5, 51.5)
 
         EXPECTED_ITEM_IDS = {
             'S2B_MSIL2A_20230101T102339_R065_T32UPC_20240806T223544',
@@ -65,7 +65,7 @@ class TestSTACProvider:
             collection='sentinel-2-l2a',
             starttime=start,
             endtime=end,
-            area_of_interest=area_of_interest,
+            roi=roi,
         )
         assert isinstance(item_col, pystac.ItemCollection)
         assert len(item_col) == 4

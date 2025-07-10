@@ -12,7 +12,7 @@ _processor_registry: dict[tuple[str, str], "BaseProcessor"] = {}
 class BaseProcessor:
 
     def filter_items(
-        self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection
+        self, provider: BaseProvider, roi: shapely.Geometry, items: pystac.ItemCollection
     ) -> pystac.ItemCollection:
         """
         Filter items in the collection based on specific criteria.
@@ -21,13 +21,11 @@ class BaseProcessor:
         """
         return items
 
-    def load_items(
-        self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection
-    ) -> xr.Dataset:
+    def load_items(self, provider: BaseProvider, roi: shapely.Geometry, items: pystac.ItemCollection) -> xr.Dataset:
         """
         Download items in the collection.
         :param provider: The provider to use for downloading.
-        :param area_of_interest: The area of interest for the download.
+        :param roi: The area of interest for the download.
         :param items: The item collection to download.
         :return: Item collection with downloaded items.
         """
@@ -43,9 +41,7 @@ class BaseProcessor:
         """
         return provider.load_items(items, geobox=geobox)
 
-    def postprocess_data(
-        self, provider: BaseProvider, area_of_interest: shapely.Geometry, data: xr.Dataset
-    ) -> xr.Dataset:
+    def postprocess_data(self, provider: BaseProvider, roi: shapely.Geometry, data: xr.Dataset) -> xr.Dataset:
         """
         Post-process the downloaded data.
         :param data: The data to post-process.

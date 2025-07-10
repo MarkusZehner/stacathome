@@ -1,12 +1,12 @@
 import shapely
 from odc.geo.geobox import GeoBox
-
 from stacathome.processors.sentinel2_rewrite import Sentinel2L2AProcessor
 from stacathome.providers import get_provider
 
 
-NEAR_TILE_CORNER = shapely.Point(704800, 5895040) # EPSG:32632
-NEAR_TILE_CORNER_SHIFT = shapely.Point(710800, 5901040) # EPSG:32632
+NEAR_TILE_CORNER = shapely.Point(704800, 5895040)  # EPSG:32632
+NEAR_TILE_CORNER_SHIFT = shapely.Point(710800, 5901040)  # EPSG:32632
+
 
 def test_geobox(center_p, crs='EPSG:32632', resolution=10, size_box=500):
     """Create a geobox centered at the given point with a specified resolution and size."""
@@ -23,6 +23,7 @@ def test_geobox(center_p, crs='EPSG:32632', resolution=10, size_box=500):
         tight=True,
     )
     return geobox
+
 
 class TestSentinel2L2AProcessor:
 
@@ -70,50 +71,49 @@ class TestSentinel2L2AProcessor:
             'S2B_MSIL2A_20230101T102339_R065_T32UPD_20230101T231205',
         ]
 
-
         filter_1 = [
             'S2A_MSIL2A_20230106T102411_R065_T32UQD_20240807T164608',
             'S2B_MSIL2A_20230104T103329_R108_T32UQD_20240809T082154',
             'S2B_MSIL2A_20230101T102339_R065_T32UQD_20240806T223544',
-            ]
-        
+        ]
+
         filter_2 = [
             'S2A_MSIL2A_20230106T102411_R065_T33UUU_20240807T164608',
             'S2B_MSIL2A_20230104T103329_R108_T33UUU_20240809T082154',
             'S2B_MSIL2A_20230101T102339_R065_T33UUU_20240806T223544',
-            ]
+        ]
 
         geobox = test_geobox(NEAR_TILE_CORNER, resolution=10, size_box=5000)
-        area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
+        roi = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
         items = provider.request_items(
             collection='sentinel-2-l2a',
             starttime='2023-01-01',
             endtime='2023-01-09',
-            area_of_interest=area_of_interest,
+            roi=roi,
         )
 
         filtered_items = processor.filter_items(
             provider=None,
-            area_of_interest=geobox.footprint('EPSG:4326', buffer=0, npoints=4),
+            roi=geobox.footprint('EPSG:4326', buffer=0, npoints=4),
             items=items,
         )
 
         geobox_shift = test_geobox(NEAR_TILE_CORNER_SHIFT, resolution=10)
         filtered_items_shift = processor.filter_items(
             provider=None,
-            area_of_interest=geobox_shift.footprint('EPSG:4326', buffer=0, npoints=4),
+            roi=geobox_shift.footprint('EPSG:4326', buffer=0, npoints=4),
             items=items,
         )
 
         geobox_large = test_geobox(NEAR_TILE_CORNER, resolution=10, size_box=10000)
         filtered_items_large = processor.filter_items(
             provider=None,
-            area_of_interest=geobox_large.footprint('EPSG:4326', buffer=0, npoints=4),
+            roi=geobox_large.footprint('EPSG:4326', buffer=0, npoints=4),
             items=items,
         )
 
-        assert set(item.id for item in items) == set(expected_ids_raw)
-        assert set(item.id for item in filtered_items) == set(filter_1)
-        assert set(item.id for item in filtered_items_shift) == set(filter_2)
+        assert {item.id for item in items} == set(expected_ids_raw)
+        assert {item.id for item in filtered_items} == set(filter_1)
+        assert {item.id for item in filtered_items_shift} == set(filter_2)
 
         print([i for i in filtered_items_large])

@@ -21,7 +21,7 @@ __all__ = [
 def search_items(
     provider_name: str,
     collection: str,
-    area_of_interest: shapely.Geometry,
+    roi: shapely.Geometry,
     starttime: datetime,
     endtime: datetime,
     processor: BaseProcessor = None,
@@ -37,9 +37,9 @@ def search_items(
         collection=collection,
         starttime=starttime,
         endtime=endtime,
-        area_of_interest=area_of_interest,
+        roi=roi,
     )
-    items = processor.filter_items(provider, area_of_interest, items)
+    items = processor.filter_items(provider, roi, items)
     return items
 
 
@@ -52,11 +52,11 @@ def search_items_geoboxed(
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ):
-    area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
+    roi = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
     return search_items(
         provider_name=provider_name,
         collection=collection,
-        area_of_interest=area_of_interest,
+        roi=roi,
         starttime=starttime,
         endtime=endtime,
         processor=processor,
@@ -67,7 +67,7 @@ def search_items_geoboxed(
 def load(
     provider_name: str,
     collection: str,
-    area_of_interest: shapely.Geometry,
+    roi: shapely.Geometry,
     starttime: datetime,
     endtime: datetime,
     processor: BaseProcessor = None,
@@ -83,12 +83,12 @@ def load(
         collection=collection,
         starttime=starttime,
         endtime=endtime,
-        area_of_interest=area_of_interest,
+        roi=roi,
     )
 
-    items = processor.filter_items(provider, area_of_interest, items)
-    data = processor.load_items(provider, area_of_interest, items)
-    data = processor.postprocess_data(provider, area_of_interest, data)
+    items = processor.filter_items(provider, roi, items)
+    data = processor.load_items(provider, roi, items)
+    data = processor.postprocess_data(provider, roi, data)
 
     return items, data
 
@@ -108,17 +108,17 @@ def load_geoboxed(
     if processor is None:
         processor = BaseProcessor()
 
-    area_of_interest = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
+    roi = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
 
     items = provider.request_items(
         collection=collection,
         starttime=starttime,
         endtime=endtime,
-        area_of_interest=area_of_interest,
+        roi=roi,
     )
 
-    items = processor.filter_items(provider, area_of_interest, items)
+    items = processor.filter_items(provider, roi, items)
     data = processor.load_items_geoboxed(provider, geobox, items)
-    data = processor.postprocess_data(provider, area_of_interest, data)
+    data = processor.postprocess_data(provider, roi, data)
 
     return items, data

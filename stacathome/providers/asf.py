@@ -16,11 +16,11 @@ class ASFProvider(BaseProvider):
         collection: str,
         starttime: datetime,
         endtime: datetime,
-        area_of_interest: shapely.Geometry = None,
+        roi: shapely.Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
-        wkt = area_of_interest.wkt
+        wkt = roi.wkt
         results = asf_search.search(
             dataset=collection,
             start=starttime,

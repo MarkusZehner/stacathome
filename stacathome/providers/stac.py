@@ -110,14 +110,14 @@ class STACProvider(BaseProvider):
         collection: str,
         starttime: datetime,
         endtime: datetime,
-        area_of_interest: shapely.Geometry = None,
+        roi: shapely.Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
         items = self.client.search(
             collections=[collection],
             datetime=(starttime, endtime),
-            intersects=area_of_interest,
+            intersects=roi,
             limit=limit,
             **kwargs,
         ).item_collection()

@@ -18,14 +18,14 @@ class EarthAccessProvider(BaseProvider):
         collection: str,
         starttime: datetime,
         endtime: datetime,
-        area_of_interest: shapely.Geometry = None,
+        roi: shapely.Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
         granules = earthaccess.search_data(
             short_name=collection,
             temporal=(starttime, endtime),
-            bounding_box=area_of_interest.bounds if area_of_interest else None,
+            bounding_box=roi.bounds if roi else None,
             count=limit if limit else -1,
             **kwargs,
         )

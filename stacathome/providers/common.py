@@ -17,17 +17,53 @@ _providers: dict[str, "BaseProvider"] = {}
 
 class BaseProvider:
     """
-    Represents a connection to a data provider. Repronsible  for session management and
+    Represents a connection to a data provider. Repronsible for session management and
     providing methods to request items, download granules, and download cubes.
     """
 
+    def has_collection(self, collection: str) -> bool:
+        """
+        Check if the specified collection is supported by the provider.
+
+        Args:
+            collection (str): The name of the collection to check.
+
+        Returns:
+            bool: True if the collection is available, False otherwise.
+
+        Raises:
+            NotImplementedError: If the method is not implemented by the subclass.
+        """
+        return collection in self.available_collections()
+
     def available_collections(self) -> list[str]:
         """
-        Returns all collections available from this Provider.
+        List all collections available from this provider.
+
+        Returns:
+            list[str]: A list of collection names supported by the provider.
+
+        Raises:
+            NotImplementedError: If the method is not implemented by the subclass.
         """
         raise NotImplementedError
 
     def get_metadata(self, collection: str) -> CollectionMetadata:
+        """
+        Retrieve metadata for a specified collection.
+
+        Args:
+            collection (str): The name of the collection for which metadata is requested.
+
+        Returns:
+            CollectionMetadata: The metadata associated with the specified collection.
+
+        Raises:
+            KeyError: If the specified collection does not exist.
+            NotImplementedError: If the method is not implemented by the subclass.
+        """
+        raise NotImplementedError
+
     def get_item(collection: str, item_id: str) -> pystac.Item | None:
         """
         Retrieves a STAC item from the specified collection.
@@ -45,27 +81,15 @@ class BaseProvider:
         """
         raise NotImplementedError
 
-
     def _request_items(
         self,
         collection: str,
         starttime: datetime,
         endtime: datetime,
-        area_of_interest: shapely.Geometry = None,
+        roi: shapely.Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
-        """
-        Requests items from the data provider based on the specified parameters.
-
-        :param collection: The name of the collection to query.
-        :param starttime: The start time for the query.
-        :param endtime: The end time for the query.
-        :param area_of_interest: The geographical area to query.
-        :param limit: The maximum number of items to return.
-        :param kwargs: Additional parameters for the request.
-        :return: A collection of items matching the query.
-        """
         raise NotImplementedError
 
     def request_items(
@@ -73,10 +97,24 @@ class BaseProvider:
         collection: str,
         starttime: datetime | str,
         endtime: datetime | str,
-        area_of_interest: shapely.Geometry = None,
+        roi: shapely.Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
+        """
+        Searches for items from the data provider matching the specified parameters.
+
+        Args:
+            collection (str): The name of the collection to query.
+            starttime (datetime or str): The start time for the query. Can be a datetime object or an ISO8601 string.
+            endtime (datetime or str): The end time for the query. Can be a datetime object or an ISO8601 string.
+            roi (shapely.Geometry, optional): Region of interest. The geographical area to query. Defaults to None.
+            limit (int, optional): The maximum number of items to return. Defaults to None.
+            **kwargs: Additional parameters for the request.
+
+        Returns:
+            pystac.ItemCollection: A collection of items matching the query.
+        """
         if not isinstance(collection, str):
             raise TypeError("Collection must be a string.")
         if isinstance(starttime, str):
@@ -87,34 +125,55 @@ class BaseProvider:
             collection=collection,
             starttime=starttime,
             endtime=endtime,
-            area_of_interest=area_of_interest,
+            roi=roi,
             limit=limit,
             **kwargs,
         )
 
     def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, **kwargs) -> xr.Dataset:
         """
-        Load items from the provider and returns them as a merged xr.Dataset.
+        Loads items from the provider and returns them as a merged xarray.Dataset.
 
-        :param items: The item collection to load.
-        :param geobox: Optional geobox to specify the spatial extent and crs of the output.
-        :param kwargs: Additional parameters for loading.
-        :return: Loaded item collection.
+        Args:
+            items (pystac.ItemCollection): The collection of STAC items to load.
+            geobox (GeoBox, optional): Specifies the spatial extent and coordinate reference system (CRS) of the output dataset. Defaults to None.
+            **kwargs: Additional keyword arguments for loading.
+
+        Returns:
+            xr.Dataset: The loaded and merged dataset from the provided items.
         """
         raise NotImplementedError
 
     def load_granule(self, item: pystac.Item, **kwargs) -> bytes:
         """
-        Load a single granule from the provider into memory
+        Loads a single granule from the provider into memory.
 
-        :param item: The item to load.
-        :param kwargs: Additional parameters for loading.
-        :return: Loaded granule as bytes.
+        Args:
+            item (pystac.Item): The item representing the granule to load.
+            **kwargs: Additional keyword arguments for loading.
+
+        Returns:
+            bytes: The loaded granule as a bytes object.
         """
         raise NotImplementedError
 
 
 def get_provider(provider_name: str) -> BaseProvider:
+    """
+    Retrieve a provider instance by name.
+
+    If the provider instance is already registered in the internal cache, it is returned.
+    Otherwise, the provider class is looked up, instantiated and then returned.
+
+    Args:
+        provider_name (str): The name of the provider to retrieve.
+
+    Returns:
+        BaseProvider: An instance of the requested provider.
+
+    Raises:
+        KeyError: If the provider name is not registered.
+    """
     provider = _providers.get(provider_name)
 
     if provider is None:
@@ -133,9 +192,15 @@ def register_provider(name, factory: Callable):
     """
     Registers a provider class with a given name.
 
-    :param name: The name of the provider.
-    :param factory: A callable that returns an instance of the provider.
+    Args:
+        name (str): The name of the provider.
+        factory (Callable): A callable that returns an instance of the provider.
+
+    Raises:
+        ValueError: If the factory is not callable or the provider name is already registered.
     """
     if not callable(factory):
         raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
+    if name in _provider_classes:
+        raise ValueError(f"Provider '{name}' is already registered.")
     _provider_classes[name] = factory
