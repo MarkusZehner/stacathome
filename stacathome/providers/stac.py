@@ -22,6 +22,12 @@ class STACProvider(BaseProvider):
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
 
+    def _collection_client(self, collection: str) -> pystac_client.CollectionClient:
+        # get_collection() is not consistence here wrt errors. Hence we check it ourself.
+        if not self.has_collection(collection):
+            raise KeyError(f'Collection {collection} not found')
+        return self.client.get_collection(collection)
+
     def available_collections(self) -> list[str]:
         return [col.id for col in self.client.get_collections()]
 
@@ -94,6 +100,10 @@ class STACProvider(BaseProvider):
             variables.append(var)
 
         return CollectionMetadata(*variables) if variables else None
+
+    def get_item(self, collection: str, item_id: str) -> pystac.Item | None:
+        col_client = self._collection_client(collection)
+        return next(col_client.get_items(item_id), None)
 
     def _request_items(
         self,

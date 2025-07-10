@@ -28,7 +28,23 @@ class BaseProvider:
         raise NotImplementedError
 
     def get_metadata(self, collection: str) -> CollectionMetadata:
+    def get_item(collection: str, item_id: str) -> pystac.Item | None:
+        """
+        Retrieves a STAC item from the specified collection.
+
+        Args:
+            collection (str): The name of the collection to retrieve the item from.
+            item_id (str): The unique identifier of the item to retrieve.
+
+        Returns:
+            pystac.Item | None: The requested STAC item if found, otherwise None.
+
+        Raises:
+            KeyError: If the specified collection does not exist in the Provider.
+            NotImplementedError: If the method is not implemented by the subclass.
+        """
         raise NotImplementedError
+
 
     def _request_items(
         self,

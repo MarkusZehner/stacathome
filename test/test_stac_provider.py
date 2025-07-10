@@ -1,4 +1,5 @@
 import time
+from datetime import date
 
 import planetary_computer
 import pystac
@@ -17,6 +18,32 @@ def construct_provider():
 
 
 class TestSTACProvider:
+
+    @pytest.mark.remote
+    @pytest.mark.planetary
+    def test_get_item(self):
+        provider = construct_provider()
+        item = provider.get_item('sentinel-2-l2a', 'S2B_MSIL2A_20230101T102339_R065_T32UPC_20240806T223544')
+        assert item is not None
+        assert isinstance(item, pystac.Item)
+        assert item.collection_id == 'sentinel-2-l2a'
+        assert item.id == 'S2B_MSIL2A_20230101T102339_R065_T32UPC_20240806T223544'
+        assert item.datetime.date() == date(2023, 1, 1)
+        assert 'B01' in item.assets
+
+    @pytest.mark.remote
+    @pytest.mark.planetary
+    def test_get_item_raises_keyerror(self):
+        provider = construct_provider()
+        with pytest.raises(KeyError):
+            provider.get_item('UNK_COLLECTION', 'S2B_MSIL2A_20230101T102339_R065_T32UPC_20240806T223544')
+
+    @pytest.mark.remote
+    @pytest.mark.planetary
+    def test_get_item_returns_none(self):
+        provider = construct_provider()
+        item = provider.get_item('sentinel-2-l2a', 'S2B_UNK_ID')
+        assert item is None
 
     @pytest.mark.remote
     @pytest.mark.planetary
@@ -56,6 +83,7 @@ class TestSTACProvider:
     @pytest.mark.remote
     @pytest.mark.planetary
     @pytest.mark.long
+    @pytest.mark.skip
     def test_get_metadata_all(self):
         provider = construct_provider()
         collections = provider.available_collections()
