@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Iterable
 
 import pandas as pd
 import pystac
@@ -130,7 +130,12 @@ class BaseProvider:
             **kwargs,
         )
 
-    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, **kwargs) -> xr.Dataset:
+    def load_items(self, 
+        items: pystac.ItemCollection,
+        geobox: GeoBox | None = None,
+        variables: Iterable[str] | None = None,
+        **kwargs
+    ) -> xr.Dataset:
         """
         Loads items from the provider and returns them as a merged xarray.Dataset.
 

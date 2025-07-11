@@ -11,7 +11,7 @@ import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
-from stacathome.metadata import CollectionMetadata, Variable
+from stacathome.metadata import CollectionMetadata, Variable, has_static_metadata, get_static_metadata
 from .common import BaseProvider, register_provider
 
 
@@ -125,10 +125,15 @@ class STACProvider(BaseProvider):
             raise ValueError("Failed to get data from the API")
         return items
 
-    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, **kwargs) -> xr.Dataset:
+    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables = None, **kwargs) -> xr.Dataset:
+        if not items:
+            raise ValueError('No items provided for loading.')
+        
+        variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
         data = odc.stac.load(
             items=items,
+            bands=variables,
             patch_url=self.sign,
             geobox=geobox,
             groupby=groupby,
