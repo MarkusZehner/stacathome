@@ -15,7 +15,7 @@ class EarthAccessProvider(BaseProvider):
     def __init__(self):
         earthaccess.login(persist=True)
         
-    def available_collections(self) -> list[str]:
+    def available_collections(self) -> list[tuple[str, str]]:
         shortname_version = namedtuple('EarthaccessCollections', ['ShortName', 'Version'])
         cloud_hosted_datasets = earthaccess.search_datasets(cloud_hosted=True)
         not_cloud_hosted_datasets = earthaccess.search_datasets(cloud_hosted=False)

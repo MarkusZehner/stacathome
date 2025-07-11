@@ -64,7 +64,7 @@ class BaseProvider:
         """
         raise NotImplementedError
 
-    def get_item(collection: str, item_id: str) -> pystac.Item | None:
+    def get_item(self, collection: str, item_id: str) -> pystac.Item | None:
         """
         Retrieves a STAC item from the specified collection.
 
