@@ -1,7 +1,11 @@
+import odc.geo
+import odc.geo.geom as geom
 import pystac
+import pytest
+import shapely
 from odc.geo import AnchorEnum
-from odc.geo.geobox import GeoBox
-from stacathome.stac import geobox_from_asset, geoboxes_from_assets
+from odc.geo.geobox import Affine, CRS, GeoBox
+from stacathome.stac import enclosing_geoboxes_per_grid, geobox_from_asset, geoboxes_from_assets
 
 
 TEST_ITEM_DICT = {
@@ -182,6 +186,11 @@ TEST_ITEM_DICT = {
     'collection': 'sentinel-2-l2a',
 }
 
+# Grids / geoboxes contained in the item
+TRUE_10M_BOX = GeoBox((10980, 10980), Affine(10.0, 0.0, 600000.0, 0.0, -10.0, 5800020.0), CRS('EPSG:32632'))
+TRUE_20M_BOX = GeoBox((5490, 5490), Affine(20.0, 0.0, 600000.0, 0.0, -20.0, 5800020.0), CRS('EPSG:32632'))
+TRUE_60M_BOX = GeoBox((1830, 1830), Affine(60.0, 0.0, 600000.0, 0.0, -60.0, 5800020.0), CRS('EPSG:32632'))
+
 
 def _get_test_item() -> pystac.Item:
     return pystac.Item.from_dict(TEST_ITEM_DICT)
@@ -260,3 +269,72 @@ class TestGeoboxFromAsset:
 
     def test_nonsense_asset(self):
         assert geobox_from_asset(_get_test_item(), 'ABCD') is None
+
+
+class TestEnclosingGeoboxesPerGrid:
+
+    def test_raises_for_empty_items(self):
+        with pytest.raises(ValueError):
+            enclosing_geoboxes_per_grid(pystac.ItemCollection([]), geom.Geometry(shapely.Point()), crs=None)
+
+    def test_identical_geometry(self):
+        # This is the most simplistic case:
+        # We pass the original shape of the GeoBox contained in the item (a rectangle in the local CRS),
+        # and expect to retrieve identical geoboxes to those resolutions contained in the item.
+        items = pystac.ItemCollection([_get_test_item()])
+        geoboxes = enclosing_geoboxes_per_grid(items, TRUE_60M_BOX.extent, crs=None)
+        print(geoboxes)
+        assert isinstance(geoboxes, dict)
+        assert len(geoboxes) == 3
+
+        assert TRUE_10M_BOX in geoboxes
+        assert geoboxes[TRUE_10M_BOX] == TRUE_10M_BOX
+
+        assert TRUE_20M_BOX in geoboxes
+        assert geoboxes[TRUE_20M_BOX] == TRUE_20M_BOX
+
+        assert TRUE_60M_BOX in geoboxes
+        assert geoboxes[TRUE_60M_BOX] == TRUE_60M_BOX
+
+    def test_point_geometry(self):
+        # For a single point we expect to get three geoboxes, each describing the pixel containing the point
+        # We test the (1,1) pixel for 10m, (0,0) for 20m and 60m
+        point = geom.Geometry(shapely.Point(600000.0 + 10.1, 5800020.0 - 10.1), CRS('EPSG:32632'))
+        items = pystac.ItemCollection([_get_test_item()])
+        geoboxes = enclosing_geoboxes_per_grid(items, point, crs=None)
+        assert isinstance(geoboxes, dict)
+        assert len(geoboxes) == 3
+
+        box_60m_expected = GeoBox(
+            shape=(1, 1),
+            affine=Affine(60.0, 0.0, 600000.0, 0.0, -60.0, 5800020.0),
+            crs=CRS('EPSG:32632'),
+        )
+        assert TRUE_60M_BOX in geoboxes
+        assert geoboxes[TRUE_60M_BOX] == box_60m_expected
+
+        box_20m_expected = GeoBox(
+            shape=(1, 1),
+            affine=Affine(20.0, 0.0, 600000.0, 0.0, -20.0, 5800020.0),
+            crs=CRS('EPSG:32632'),
+        )
+        assert TRUE_20M_BOX in geoboxes
+        assert geoboxes[TRUE_20M_BOX] == box_20m_expected
+
+        # we expect snapping to happen here
+        box_10m_expected = GeoBox(
+            shape=(1, 1),
+            affine=Affine(10.0, 0.0, 600000.0 + 10.0, 0.0, -10.0, 5800020.0 - 10.0),
+            crs=CRS('EPSG:32632'),
+        )
+        assert TRUE_10M_BOX in geoboxes
+        assert geoboxes[TRUE_10M_BOX] == box_10m_expected
+
+
+if __name__ == '__main__':
+    item = _get_test_item()
+    items = pystac.ItemCollection([item])
+
+    # geometry = geom.Geometry()
+
+    # geobox = enclosing_geoboxes_per_resolution(items, geometry, crs=None)

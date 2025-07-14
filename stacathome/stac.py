@@ -2,8 +2,9 @@
 STAC related functions
 """
 
-from typing import Iterable
+from typing import Iterable, Sequence
 
+import odc.geo.geom as geom
 import odc.stac
 import pystac
 from odc.geo.geobox import GeoBox
@@ -64,3 +65,47 @@ def geobox_from_asset(item: pystac.Item, asset_id: str) -> GeoBox | None:
         This functionality relies on the Projection STAC extension and Raster STAC extension to extract geospatial information from assets.
     """
     return geoboxes_from_assets(item, (asset_id,)).get(asset_id)
+
+
+def group_assets_by_grid(item: pystac.Item) -> dict[GeoBox, Sequence[str]]:
+    """
+    Groups asset names of a STAC item by their associated GeoBox.
+
+    Given a pystac.Item, this function maps each asset to its corresponding GeoBox
+    (using `geoboxes_from_assets`), then groups asset names by the common GeoBox they belong to.
+
+    This function can be for instance be used to group variables of identical resolution together.
+
+    Args:
+        item (pystac.Item): The STAC item containing assets to be grouped.
+
+    Returns:
+        dict[GeoBox, Sequence[str]]: A dictionary mapping each GeoBox to a sequence of asset names that use the identical GeoBox
+    """
+    asset_to_gbox = geoboxes_from_assets(item)
+    geoboxes = set(asset_to_gbox.values())
+    gbox_to_assets = {geobox: [] for geobox in geoboxes}
+    for asset, gbox in asset_to_gbox.items():
+        gbox_to_assets[gbox].append(asset)
+    return gbox_to_assets
+
+
+def enclosing_geoboxes_per_grid(
+    items: pystac.ItemCollection, geometry: geom.Geometry, crs: geom.MaybeCRS = None
+) -> dict[GeoBox, GeoBox]:
+    """
+    Finds the smallest GeoBox enclosing the given geometry for each grid/resolution present in the given STAC items.
+    """
+    if len(items) == 0:
+        raise ValueError('No items provided')
+
+    parsed_items = list(odc.stac.parse_items(items))
+
+    gbox_to_assets = group_assets_by_grid(items[0])  # assuming that each item is consistent
+    gbox_to_enclosing_box = {}
+    for gbox, asset_names in gbox_to_assets.items():
+        gbox_to_enclosing_box[gbox] = odc.stac.output_geobox(
+            parsed_items, bands=asset_names, geopolygon=geometry, crs=crs
+        )
+
+    return gbox_to_enclosing_box
