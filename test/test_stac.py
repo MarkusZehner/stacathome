@@ -1,7 +1,5 @@
-import odc.geo
 import odc.geo.geom as geom
 import pystac
-import pytest
 import shapely
 from odc.geo import AnchorEnum
 from odc.geo.geobox import Affine, CRS, GeoBox
@@ -321,6 +319,90 @@ class TestEnclosingGeoboxesPerGrid:
             shape=(1, 1),
             affine=Affine(60.0, 0.0, 600000.0, 0.0, -60.0, 5800020.0),
             crs=CRS('EPSG:32632'),
+        )
+        assert geoboxes[2].grid_box == TRUE_60M_BOX
+        assert geoboxes[2].enclosing_box == box_60m_expected
+
+    def test_snapping(self):
+        # Here we use a slightly smaller extent whose points additionally lie within pixel boundaries
+        # We expect it to be extented to next biggest grid multiple
+        geometry = TRUE_60M_BOX.extent.buffer(-25.0)  # -25meters, pixel 2 for 10m,  pixel 1 for 20m,  pixel 0 for 60m,
+        geoboxes = enclosing_geoboxes_per_grid(_get_test_item(), geometry)
+
+        box_10m_expected = GeoBox(
+            (10980 - 4, 10980 - 4),
+            Affine(10.0, 0.0, 600000.0 + 2 * 10, 0.0, -10.0, 5800020.0 - 2 * 10),
+            CRS('EPSG:32632'),
+        )
+        assert geoboxes[0].grid_box == TRUE_10M_BOX
+        assert geoboxes[0].enclosing_box == box_10m_expected
+
+        box_20m_expected = GeoBox(
+            (5490 - 2, 5490 - 2),
+            Affine(20.0, 0.0, 600000.0 + 1 * 20, 0.0, -20.0, 5800020.0 - 1 * 20),
+            CRS('EPSG:32632'),
+        )
+        assert geoboxes[1].grid_box == TRUE_20M_BOX
+        assert geoboxes[1].enclosing_box == box_20m_expected
+
+        assert geoboxes[2].grid_box == TRUE_60M_BOX
+        assert geoboxes[2].enclosing_box == TRUE_60M_BOX
+
+    def test_outside_box(self):
+        # Here we provide coordinates that our completely outside of the original geoboxes
+        geometry = TRUE_60M_BOX.left.extent
+        geoboxes = enclosing_geoboxes_per_grid(_get_test_item(), geometry)
+
+        assert geoboxes[0].grid_box == TRUE_10M_BOX
+        assert geoboxes[0].enclosing_box == TRUE_10M_BOX.left
+
+        assert geoboxes[1].grid_box == TRUE_20M_BOX
+        assert geoboxes[1].enclosing_box == TRUE_20M_BOX.left
+
+        assert geoboxes[2].grid_box == TRUE_60M_BOX
+        assert geoboxes[2].enclosing_box == TRUE_60M_BOX.left
+
+    def test_complex_geometry(self):
+        # We use a skewed quadrangle that reaches over the boundaries of the orinal box
+        # Additionally the quadrangle is passed in as WGS84
+
+        def pix2wld(x, y):
+            return TRUE_10M_BOX.pix2wld(x, y)
+
+        # bounds: left -3, right: 20, top: 3, bottom: 20
+        geometry = geom.polygon(
+            [
+                pix2wld(3, 3),
+                pix2wld(-3, 10),
+                pix2wld(0, 15),
+                pix2wld(20, 20),
+            ],
+            CRS('EPSG:32632'),
+        )
+        geometry = geometry.transform(lambda x, y: (x + 0.1, y + 0.1))
+        geometry = geometry.to_crs(CRS('EPSG:4326'), resolution=2)
+        geoboxes = enclosing_geoboxes_per_grid(_get_test_item(), geometry)
+
+        box_10m_expected = GeoBox(
+            (17, 23),  # y,x !!!
+            Affine(10.0, 0.0, 600000.0 - 3 * 10.0, 0.0, -10.0, 5800020.0 - 3 * 10.0),
+            CRS('EPSG:32632'),
+        )
+        assert geoboxes[0].grid_box == TRUE_10M_BOX
+        assert geoboxes[0].enclosing_box == box_10m_expected
+
+        box_20m_expected = GeoBox(
+            (9, 12),  # y,x !!!
+            Affine(20.0, 0.0, 600000.0 - 2 * 20.0, 0.0, -20.0, 5800020.0 - 1 * 20.0),
+            CRS('EPSG:32632'),
+        )
+        assert geoboxes[1].grid_box == TRUE_20M_BOX
+        assert geoboxes[1].enclosing_box == box_20m_expected
+
+        box_60m_expected = GeoBox(
+            (4, 5),  # y,x !!!
+            Affine(60.0, 0.0, 600000.0 - 1 * 60.0, 0.0, -60.0, 5800020.0),
+            CRS('EPSG:32632'),
         )
         assert geoboxes[2].grid_box == TRUE_60M_BOX
         assert geoboxes[2].enclosing_box == box_60m_expected
