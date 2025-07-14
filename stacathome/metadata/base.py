@@ -1,3 +1,4 @@
+import math
 import pprint
 from dataclasses import field
 from typing import Iterable, Optional
@@ -79,3 +80,17 @@ def has_static_metadata(provider_name: str, collection: str) -> bool:
 def get_static_metadata(provider_name: str, collection: str) -> CollectionMetadata | None:
     key = (provider_name, collection)
     return _metadata_registry.get(key)
+
+def get_resampling_per_variable(metadata:CollectionMetadata, target_resolution: float) -> dict[str, str]:
+    return {v.name: "nearest" if (target_resolution <= v.spatial_resolution or
+                        math.isclose(target_resolution, v.spatial_resolution))
+                        else v.preferred_resampling for v in metadata.variables.values()}
+    
+def get_variable_attributes(metadata:CollectionMetadata, variables:list[str] | None = None):
+    attrs = {}
+    for v, attr in metadata.variables.items():
+        if variables and v not in variables:
+            continue
+        attrs[v] = attr.__dict__
+    return attrs
+        

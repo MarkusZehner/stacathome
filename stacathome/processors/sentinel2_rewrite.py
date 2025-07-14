@@ -9,6 +9,7 @@ import pystac
 import shapely
 from shapely import box, Polygon, transform
 import odc.geo
+from xarray import DataArray, Dataset
 
 from stacathome.generic_utils import (
     arange_bounds,
@@ -23,6 +24,8 @@ from stacathome.generic_utils import (
 from .base import BaseProcessor, register_default_processor
 from stacathome.providers import BaseProvider
 from stacathome.geo import wgs84_contains, wgs84_overlap_percentage, centroid_distance
+from stacathome.stac import enclosing_geoboxes_per_grid
+from stacathome.metadata import get_static_metadata, has_static_metadata, get_resampling_per_variable
 
 
 class S2Item(pystac.Item):
@@ -109,7 +112,7 @@ def s2_pc_filter_newest_processing_time(items: list) -> list:
     """
     filtered = {}
     for item in items:
-        native_id = item._item.id
+        native_id = item.id
         base_name, process_time = native_id.rsplit('_', 1)
         if base_name not in filtered or process_time > filtered[base_name][0]:
             filtered[base_name] = (process_time, item)
@@ -187,20 +190,102 @@ class Sentinel2L2AProcessor(BaseProcessor):
             clone_items=False,
             extra_fields=items.extra_fields,
         )
+        
+    def postprocess_data(self, provider, roi, data:Dataset):
+        #data = _postprocess_filter_no_data_timesteps(data, coarsest_band)
+        return rename_s2_coords(data)
 
-    def load_items(
-        self, provider: BaseProvider, 
-        roi: odc.geo.geom.Geometry, 
-        items: pystac.ItemCollection, 
-        variables: list[str] | None = None,
-    ) -> xr.Dataset:
-        # check if variables are provided, if not use all supported bands -> provider based
-        # create geobox from fitting item (otherwise will use first item) -> filter gives back matching ones first
+
+def _postprocess_filter_no_data_timesteps(data:Dataset, indicator_variable:str | None = None):
+    if not indicator_variable:
+        coords_res = _get_coord_name_and_resolution(data)
+        coarsest_axes = coords_res[max(coords_res)]
+        for data_var in data.data_vars.values():
+            if coarsest_axes[0] in data_var.dims:
+                indicator_variable = data_var.name
+                break      
+    # remove empty images, could be moved into separate function
+    # get coarsest resolution first band and check where mean value is 0:
+    mean_over_time = data[indicator_variable].mean(dim=coarsest_axes)
+    na_value = data[indicator_variable].attrs['nodata_value']
+    mask_over_time = np.where(mean_over_time != na_value)[0]
+    return data.isel(time=mask_over_time)
+
+
+def rename_s2_coords(data:Dataset):
+    coord_names_resolution = _get_coord_name_and_resolution(data)
+    rename_dict = {}
+    for resolution, coord_names in coord_names_resolution.items():
+        renamed_coords = {
+            coord: f"{coord.split('_')[0]}_{str(int(resolution))}"
+            for coord in coord_names
+        }
+        rename_dict |= renamed_coords
+    return data.rename(rename_dict)
+      
+      
+def _get_coord_name_and_resolution(data:Dataset) -> dict[float, str]:
+    coord_names_resolution = defaultdict(list)
+    for coord in data.coords.values():
+        if coord.name.startswith('x') or coord.name.startswith('y'):
+            coord_names_resolution[abs(coord.attrs['resolution'])].append(coord.name)
+    return dict(coord_names_resolution)
+
+    # def postprocess_data(self, provider, roi, data:Dataset):
+    #     coarsest_band
+    #     data = _postprocess_filter_no_data_timesteps(data, coarsest_band)
         
         
+
+    # def load_items(
+    #     self, provider: BaseProvider,
+    #     roi: odc.geo.geom.Geometry,
+    #     items: pystac.ItemCollection,
+    #     variables: list[str] | None = None,
+    # ) -> xr.Dataset:
+    #     # check if variables are provided, if not use all supported bands -> provider based
+    #     # create geobox from fitting item (otherwise will use first item) -> filter gives back matching ones first
         
+    #     gb_asset_names = enclosing_geoboxes_per_grid(items, roi)
         
-        pass
+    #     metadata = None
+    #     dtypes = None
+    #     if has_static_metadata(provider.name, items[0].collection_id):
+    #         metadata = get_static_metadata(provider.name, items[0].collection_id)
+    #         dtypes = {v.name: v.dtype for v in metadata.variables.values()}
+        
+    #     datasets = {}
+    #     for gb, asset_names in gb_asset_names.items():
+    #         if variables is not None:
+    #             asset_names = set(asset_names) & set(variables)
+    #         if not asset_names:
+    #             continue
+            
+    #         resampling = get_resampling_per_variable(metadata, gb.resolution.x) if metadata else {name: "nearest" for name in asset_names}
+            
+    #         # overwrite dtype if resampling is not 'nearest'
+    #         dtype = None
+    #         if dtypes:
+    #             dtype = {name: dtypes[name] if resampling[name] == 'nearest' else 'float32' for name in asset_names}
+            
+    #         # load the data for the given geobox and asset names
+    #         datasets[str(gb.resolution.x)] = provider.load_items(
+    #             items,
+    #             geobox=gb,
+    #             variables=asset_names,
+    #             resampling=resampling,
+    #             dtype=dtype,
+    #         )
+        
+    #     return datasets
+            # # convert to float32 if required
+            # if self.convert_to_f32:
+            #     dataset = dataset.astype('float32')
+            
+            # # adjust baseline if required
+            # if self.adjust_baseline:
+            #     dataset = dataset.where(dataset != 0, np.nan)
+        
 
 
     # def load_items(self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection) -> xr.Dataset:

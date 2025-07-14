@@ -1,4 +1,7 @@
-from .base import CollectionMetadata, get_static_metadata, has_static_metadata, register_static_metadata, Variable
+from .base import (CollectionMetadata, get_static_metadata, 
+                   has_static_metadata, register_static_metadata, 
+                   Variable, get_resampling_per_variable,
+                   get_variable_attributes)
 
 __all__ = [
     'Variable',
@@ -6,6 +9,8 @@ __all__ = [
     'get_static_metadata',
     'has_static_metadata',
     'register_static_metadata',
+    'get_resampling_per_variable',
+    'get_variable_attributes',
 ]
 
 
