@@ -17,7 +17,8 @@ from .common import BaseProvider, register_provider
 
 class STACProvider(BaseProvider):
 
-    def __init__(self, url: str, sign: Callable):
+    def __init__(self, name:str, url: str, sign: Callable):
+        super().__init__(name)
         self.url = url
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
@@ -146,6 +147,6 @@ class STACProvider(BaseProvider):
 
 
 _planetary = partial(
-    STACProvider, url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
+    STACProvider, name='planetary_computer', url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
 )
-register_provider('planetary_computer', _planetary)
+register_provider(_planetary)

@@ -20,6 +20,12 @@ class BaseProvider:
     Represents a connection to a data provider. Repronsible for session management and
     providing methods to request items, download granules, and download cubes.
     """
+    def __init__(self, name):
+        self._name = name
+
+    @property
+    def name(self):
+        return self._name
 
     def has_collection(self, collection: str) -> bool:
         """
@@ -193,7 +199,7 @@ def get_provider(provider_name: str) -> BaseProvider:
     return provider
 
 
-def register_provider(name, factory: Callable):
+def register_provider(factory: Callable):
     """
     Registers a provider class with a given name.
 
@@ -206,6 +212,7 @@ def register_provider(name, factory: Callable):
     """
     if not callable(factory):
         raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
-    if name in _provider_classes:
-        raise ValueError(f"Provider '{name}' is already registered.")
-    _provider_classes[name] = factory
+    instance = factory()
+    if instance.name in _provider_classes:
+        raise ValueError(f"Provider '{instance.name}' is already registered.")
+    _provider_classes[instance.name] = factory

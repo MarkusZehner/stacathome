@@ -10,6 +10,9 @@ from .common import BaseProvider, register_provider
 
 
 class ASFProvider(BaseProvider):
+    
+    def __init__(self):
+        super().__init__('asf')
 
     def _request_items(
         self,
@@ -34,8 +37,9 @@ class ASFProvider(BaseProvider):
 
         return results
 
+    @staticmethod
     def download_from_asf(urls, path, **kwargs):
-        download_urls(urls, path=path, **kwargs)
+        asf_search.download.download_urls(urls, path=path, **kwargs)
 
     def create_cube(self, parameters):
         data = odc.stac.load(**parameters)
@@ -44,4 +48,4 @@ class ASFProvider(BaseProvider):
         return data
 
 
-register_provider('asf', ASFProvider)
+register_provider(ASFProvider)

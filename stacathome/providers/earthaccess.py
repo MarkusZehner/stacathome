@@ -13,6 +13,7 @@ from .common import BaseProvider, register_provider
 
 class EarthAccessProvider(BaseProvider):
     def __init__(self):
+        super().__init__('earthaccess')
         earthaccess.login(persist=True)
         
     def available_collections(self) -> list[tuple[str, str]]:
@@ -79,4 +80,4 @@ class EarthAccessProvider(BaseProvider):
         return data
 
 
-register_provider('earthaccess', EarthAccessProvider)
+register_provider(EarthAccessProvider)
