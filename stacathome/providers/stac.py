@@ -11,14 +11,14 @@ import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
-from stacathome.metadata import CollectionMetadata, Variable, has_static_metadata, get_static_metadata
+from stacathome.metadata import CollectionMetadata, get_static_metadata, has_static_metadata, Variable
 from .common import BaseProvider, register_provider
 
 
 class STACProvider(BaseProvider):
 
-    def __init__(self, name:str, url: str, sign: Callable):
-        super().__init__(name)
+    def __init__(self, provider_name: str, url: str, sign: Callable):
+        super().__init__(provider_name)
         self.url = url
         self.sign = sign
         self.client = pystac_client.Client.open(self.url)
@@ -126,10 +126,12 @@ class STACProvider(BaseProvider):
             raise ValueError("Failed to get data from the API")
         return items
 
-    def load_items(self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables = None, **kwargs) -> xr.Dataset:
+    def load_items(
+        self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables=None, **kwargs
+    ) -> xr.Dataset:
         if not items:
             raise ValueError('No items provided for loading.')
-        
+
         variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
         data = odc.stac.load(
@@ -147,6 +149,6 @@ class STACProvider(BaseProvider):
 
 
 _planetary = partial(
-    STACProvider, name='planetary_computer', url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
+    STACProvider, url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
 )
-register_provider(_planetary)
+register_provider('planetary_computer', _planetary)

@@ -10,9 +10,9 @@ from .common import BaseProvider, register_provider
 
 
 class ASFProvider(BaseProvider):
-    
-    def __init__(self):
-        super().__init__('asf')
+
+    def __init__(self, provider_name: str):
+        super().__init__(provider_name)
 
     def _request_items(
         self,
@@ -48,4 +48,4 @@ class ASFProvider(BaseProvider):
         return data
 
 
-register_provider(ASFProvider)
+register_provider('asf', ASFProvider)

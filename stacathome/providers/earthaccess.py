@@ -4,25 +4,26 @@ from datetime import datetime
 import earthaccess
 import odc
 import odc.stac
-from odc.geo.geom import Geometry
 import pystac
 import shapely
+from odc.geo.geom import Geometry
 
 from .common import BaseProvider, register_provider
 
 
 class EarthAccessProvider(BaseProvider):
-    def __init__(self):
-        super().__init__('earthaccess')
+    def __init__(self, provider_name: str):
+        super().__init__(provider_name)
         earthaccess.login(persist=True)
-        
+
     def available_collections(self) -> list[tuple[str, str]]:
         shortname_version = namedtuple('EarthaccessCollections', ['ShortName', 'Version'])
         cloud_hosted_datasets = earthaccess.search_datasets(cloud_hosted=True)
         not_cloud_hosted_datasets = earthaccess.search_datasets(cloud_hosted=False)
         avail_datasets = cloud_hosted_datasets + not_cloud_hosted_datasets
-        collections_with_versions = [shortname_version(i['umm']['ShortName'],
-                                                       i['umm']['Version'])  for i in avail_datasets]
+        collections_with_versions = [
+            shortname_version(i['umm']['ShortName'], i['umm']['Version']) for i in avail_datasets
+        ]
         return list(set(collections_with_versions))
 
     def _request_items(
@@ -43,8 +44,10 @@ class EarthAccessProvider(BaseProvider):
             except AttributeError:
                 collection, version = collection[0], collection[1]
             finally:
-                raise TypeError("Collection must be a string or a named tuple with 'ShortName' and 'Version' attributes.")
-            
+                raise TypeError(
+                    "Collection must be a string or a named tuple with 'ShortName' and 'Version' attributes."
+                )
+
         granules = earthaccess.search_data(
             short_name=collection,
             version=version,
@@ -54,7 +57,7 @@ class EarthAccessProvider(BaseProvider):
             **kwargs,
         )
         return granules
-    
+
     # def _create_item(self, granule: earthaccess.results.DataGranule) -> pystac.Item:
     #     """
     #     Create a STAC item from a Granule object.
@@ -80,4 +83,4 @@ class EarthAccessProvider(BaseProvider):
         return data
 
 
-register_provider(EarthAccessProvider)
+register_provider('earthaccess', EarthAccessProvider)

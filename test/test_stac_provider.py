@@ -11,6 +11,7 @@ from stacathome.providers import STACProvider
 
 def construct_provider():
     provider = STACProvider(
+        'test_provider',
         url='https://planetarycomputer.microsoft.com/api/stac/v1',
         sign=planetary_computer.sign,
     )

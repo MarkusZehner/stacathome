@@ -20,6 +20,7 @@ class BaseProvider:
     Represents a connection to a data provider. Repronsible for session management and
     providing methods to request items, download granules, and download cubes.
     """
+
     def __init__(self, name):
         self._name = name
 
@@ -136,11 +137,12 @@ class BaseProvider:
             **kwargs,
         )
 
-    def load_items(self, 
+    def load_items(
+        self,
         items: pystac.ItemCollection,
         geobox: GeoBox | None = None,
         variables: Iterable[str] | None = None,
-        **kwargs
+        **kwargs,
     ) -> xr.Dataset:
         """
         Loads items from the provider and returns them as a merged xarray.Dataset.
@@ -190,29 +192,32 @@ def get_provider(provider_name: str) -> BaseProvider:
     if provider is None:
         provider_cls = _provider_classes.get(provider_name)
         if provider_cls is None:
-            raise KeyError(f"Provider '{provider_name}' is not registered.")
-        provider = provider_cls()
+            raise KeyError(f"Provider '{provider_name}' is not registered")
+        provider = provider_cls(provider_name)
         if not isinstance(provider, BaseProvider):
-            raise TypeError(f"Provider '{provider_name}' must be an instance of BaseProvider.")
+            raise TypeError(f"Provider '{provider_name}' must be an instance of BaseProvider")
+        if provider.name != provider_name:
+            raise ValueError(
+                f"Provider was registered under name '{provider_name}' but returns '{provider.name} as name attribute'"
+            )
         _providers[provider_name] = provider
 
     return provider
 
 
-def register_provider(factory: Callable):
+def register_provider(provider_name: str, factory: Callable[[str], BaseProvider]):
     """
     Registers a provider class with a given name.
 
     Args:
-        name (str): The name of the provider.
-        factory (Callable): A callable that returns an instance of the provider.
+        provider_name (str): The name of the provider.
+        factory (Callable[[str], BaseProvider]): A callable that returns an instance of the provider. Must accept provider_name as first argument.
 
     Raises:
         ValueError: If the factory is not callable or the provider name is already registered.
     """
     if not callable(factory):
         raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
-    instance = factory()
-    if instance.name in _provider_classes:
-        raise ValueError(f"Provider '{instance.name}' is already registered.")
-    _provider_classes[instance.name] = factory
+    if provider_name in _provider_classes:
+        raise ValueError(f"Provider '{provider_name}' is already registered.")
+    _provider_classes[provider_name] = factory

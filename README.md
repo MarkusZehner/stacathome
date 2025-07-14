@@ -7,7 +7,7 @@ conda/mamba env create -n my-package-env -f environment.yaml
 
 conda/mamba activate my-package-env
 
-uv sync 
+uv sync
 
 # for dev
 uv sync --all-extras

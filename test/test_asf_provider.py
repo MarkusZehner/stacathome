@@ -14,7 +14,7 @@ class TestASFProvider:
 
         EXPECTED_ITEM_IDS = {}
 
-        provider = ASFProvider()
+        provider = ASFProvider('asf')
 
         item_col = provider.request_items(
             collection='SMAP',

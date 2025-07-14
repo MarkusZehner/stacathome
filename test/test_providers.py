@@ -16,6 +16,7 @@ class TestProviderRegistry:
 
         provider = get_provider('test_provider')
         assert isinstance(provider, FakeProvider)
+        assert provider.name == 'test_provider'
 
         provider2 = get_provider('test_provider')
         assert provider is provider2  # Ensure the same instance is returned
