@@ -1,6 +1,9 @@
+import numpy as np
+from functools import partial
 import pyproj
 import pystac
 import shapely
+import odc.geo.geom
 
 _WGS84_GEOD = pyproj.Geod(ellps='WGS84')
 _PROJ_WGS84 = pyproj.Proj('EPSG:4326')
@@ -21,7 +24,7 @@ def wgs84_to_equal_area(geometry: shapely.Geometry) -> shapely.Geometry:
     return shapely.transform(geometry, _EQUAL_AREA_TRANSFORMER.transform, interleaved=False)
 
 
-def wgs84_centroid(geometry: shapely.Geometry) -> shapely.Point:
+def wgs84_centroid(geometry: odc.geo.geom.Geometry) -> shapely.Point:
     """
     Calculate the centroid of a geometry in WGS 84 (EPSG:4326) coordinate reference system.
     This function takes into account the geometry of the spheroid and returns the centroid in latitude and longitude.
@@ -32,7 +35,7 @@ def wgs84_centroid(geometry: shapely.Geometry) -> shapely.Point:
         shapely.Point: The centroid of the geometry in WGS 84 (EPSG:4326) coordinate reference system.
     """
     # TODO: Implement "A New Method for Finding Geographic Centers, with Application to U.S. States", Peter A. Rogerson
-    return geometry.centroid
+    return shapely.Point(*geometry.centroid.points)
 
 
 def wgs84_geodesic_distance(point1: shapely.Point, point2: shapely.Point) -> float:
@@ -49,7 +52,7 @@ def wgs84_geodesic_distance(point1: shapely.Point, point2: shapely.Point) -> flo
     return _WGS84_GEOD.line_length([point1.x, point2.x], [point1.y, point2.y])
 
 
-def centroid_distance(shape1: shapely.Geometry, shape2: shapely.Geometry) -> float:
+def centroid_distance(shape1: odc.geo.geom.Geometry, shape2: odc.geo.geom.Geometry) -> float:
     """
     Calculate the distance between the centroids of two shapes. The shapes are assumed to be in WGS 84 (EPSG:4326) coordinate reference system.
     Args:
@@ -100,7 +103,7 @@ def wgs84_overlap_percentage(shape1: shapely.Geometry, shape2: shapely.Geometry)
     return intersection.area / area if area > 0 else 0.0
 
 
-def wgs84_contains(shape1: shapely.Geometry, shape2: shapely.Geometry, local_proj_code: str) -> bool:
+def wgs84_contains(shape1: odc.geo.geom.Geometry, shape2: odc.geo.geom.Geometry, local_proj_code: str) -> bool:
     """
     Check if one shape fuly contains another shape in WGS 84 (EPSG:4326) coordinate reference system if projected to a local coordinate system.
 
@@ -112,8 +115,6 @@ def wgs84_contains(shape1: shapely.Geometry, shape2: shapely.Geometry, local_pro
     Returns:
         bool: True if shape1 fully contains shape2, False otherwise.
     """
-    proj = pyproj.Proj(local_proj_code)
-    transformer = pyproj.Transformer.from_proj(_PROJ_WGS84, proj, always_xy=True)
-    shape1 = shapely.transform(shape1, transformer.transform, interleaved=False)
-    shape2 = shapely.transform(shape2, transformer.transform, interleaved=False)
+    shape1 = shape1.to_crs(local_proj_code)
+    shape2 = shape2.to_crs(local_proj_code)
     return shape1.contains(shape2)

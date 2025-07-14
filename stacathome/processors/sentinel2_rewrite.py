@@ -8,7 +8,7 @@ import xarray as xr
 import pystac
 import shapely
 from shapely import box, Polygon, transform
-from odc.geo.geom import Geometry
+import odc.geo
 
 from stacathome.generic_utils import (
     arange_bounds,
@@ -23,7 +23,7 @@ from stacathome.generic_utils import (
 from .base import BaseProcessor, register_default_processor
 from stacathome.providers import BaseProvider
 from stacathome.geo import wgs84_contains, wgs84_overlap_percentage, centroid_distance
-    
+
 
 class S2Item(pystac.Item):
 
@@ -41,7 +41,7 @@ class S2Item(pystac.Item):
 
         if 's2:mgrs_tile' not in self._item.properties:
             raise ValueError("Item does not have 's2:mgrs_tile' property.")
-        
+
         if 'proj:code' not in self._item.properties:
             raise ValueError("Item does not have 'proj:code' property.")
 
@@ -79,20 +79,27 @@ class S2Item(pystac.Item):
         Get the geometry of the item as a shapely object.
         """
         return shapely.geometry.shape(self._item.geometry)
-    
+
     @cached_property
     def bbox_shapely(self):
         """
         Get the bounding box of the item as a shapely object.
         """
         return box(*self._item.bbox)
-    
+
+    @cached_property
+    def geometry_odc_geometry(self):
+        """
+        Get the geometry of the item as a odc.geo Geometry object.
+        """
+        return odc.geo.Geometry(shapely.geometry.shape(self._item.geometry), '4326')
+
     @cached_property
     def bbox_odc_geometry(self):
         """
-        Get the bounding box of the item as a shapely object.
+        Get the bounding box of the item as a odc.geo Geometry object.
         """
-        return Geometry(box(*self._item.bbox), '4326')
+        return odc.geo.Geometry(box(*self._item.bbox), '4326')
 
 
 def s2_pc_filter_newest_processing_time(items: list) -> list:
@@ -108,7 +115,7 @@ def s2_pc_filter_newest_processing_time(items: list) -> list:
             filtered[base_name] = (process_time, item)
     return [v[1] for v in filtered.values()]
 
-def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> list:
+def s2_pc_filter_coverage(items:list , roi: odc.geo.Geometry) -> list:
     """
     Filter Sentinel-2 items based on their coverage of the area of interest.
     Returns a list items required to cover the area of interest.
@@ -118,22 +125,23 @@ def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> li
         mgrs_tiles[item.mgrs_tile].append(item)
 
     centroid_distances = {}
-    latitude_distance_from_utm_center = 9999999
+    latitude_distance_from_utm_center = 500000  # not a good candiate if > half of a utm zone
     return_items = None
+    
     for v in mgrs_tiles.values():
         bbox = v[0].bbox_odc_geometry
         proj = v[0].proj_code
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
-        if wgs84_contains(bbox, area_of_interest, proj) and \
+        if wgs84_contains(bbox, roi, proj) and \
             latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
             return_items = v
-            
-        centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, area_of_interest)
-    
+
+        centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, roi)
+
     if return_items is None:
-        centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1], reverse=False)
+        centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1])
         iterative_shape = None
         return_items = []
         for k, _ in centroid_distances:
@@ -145,8 +153,8 @@ def s2_pc_filter_coverage(items:list , area_of_interest: shapely.Geometry) -> li
 
             return_items.extend(mgrs_tiles[k])
 
-            if wgs84_contains(iterative_shape, area_of_interest, proj):
-                return return_items         
+            if wgs84_contains(iterative_shape, roi, proj):
+                return return_items
     return return_items
 
 class Sentinel2L2AProcessor(BaseProcessor):
@@ -158,11 +166,12 @@ class Sentinel2L2AProcessor(BaseProcessor):
         self.convert_to_f32 = convert_to_f32
         self.adjust_baseline = adjust_baseline
     
-    def filter_items(self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection) -> pystac.ItemCollection:
+    def filter_items(self, provider: BaseProvider, roi: odc.geo.Geometry, items: pystac.ItemCollection) -> pystac.ItemCollection:
         """
 
         Filter Sentinel-2 items based on the area of interest and the newest processing time.
         This function filters the items to ensure they cover the area of interest and selects the newest processing time for each item.
+        Reoders the Items by the tile id, first item(s) corresponding to the tile closest to the roi.
 
         """
 
@@ -171,13 +180,27 @@ class Sentinel2L2AProcessor(BaseProcessor):
 
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
 
-        s2_items = s2_pc_filter_coverage(s2_items, area_of_interest)
+        s2_items = s2_pc_filter_coverage(s2_items, roi)
 
         return pystac.ItemCollection(
             items=s2_items,
             clone_items=False,
             extra_fields=items.extra_fields,
         )
+
+    def load_items(
+        self, provider: BaseProvider, 
+        roi: odc.geo.geom.Geometry, 
+        items: pystac.ItemCollection, 
+        variables: list[str] | None = None,
+    ) -> xr.Dataset:
+        # check if variables are provided, if not use all supported bands -> provider based
+        # create geobox from fitting item (otherwise will use first item) -> filter gives back matching ones first
+        
+        
+        
+        
+        pass
 
 
     # def load_items(self, provider: BaseProvider, area_of_interest: shapely.Geometry, items: pystac.ItemCollection) -> xr.Dataset:

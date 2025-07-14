@@ -1,7 +1,7 @@
 import pystac
-import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
+from odc.geo.geom import Geometry
 
 from stacathome.providers import BaseProvider
 
@@ -12,7 +12,7 @@ _processor_registry: dict[tuple[str, str], "BaseProcessor"] = {}
 class BaseProcessor:
 
     def filter_items(
-        self, provider: BaseProvider, roi: shapely.Geometry, items: pystac.ItemCollection
+        self, provider: BaseProvider, roi: Geometry, items: pystac.ItemCollection
     ) -> pystac.ItemCollection:
         """
         Filter items in the collection based on specific criteria.
@@ -21,7 +21,7 @@ class BaseProcessor:
         """
         return items
 
-    def load_items(self, provider: BaseProvider, roi: shapely.Geometry, items: pystac.ItemCollection) -> xr.Dataset:
+    def load_items(self, provider: BaseProvider, roi: Geometry, items: pystac.ItemCollection) -> xr.Dataset:
         """
         Download items in the collection.
         :param provider: The provider to use for downloading.
@@ -41,7 +41,7 @@ class BaseProcessor:
         """
         return provider.load_items(items, geobox=geobox)
 
-    def postprocess_data(self, provider: BaseProvider, roi: shapely.Geometry, data: xr.Dataset) -> xr.Dataset:
+    def postprocess_data(self, provider: BaseProvider, roi: Geometry, data: xr.Dataset) -> xr.Dataset:
         """
         Post-process the downloaded data.
         :param data: The data to post-process.
