@@ -2,6 +2,8 @@
 STAC related functions
 """
 
+from dataclasses import dataclass
+from functools import cached_property, total_ordering
 from typing import Iterable, Sequence
 
 import odc.geo.geom as geom
@@ -67,7 +69,7 @@ def geobox_from_asset(item: pystac.Item, asset_id: str) -> GeoBox | None:
     return geoboxes_from_assets(item, (asset_id,)).get(asset_id)
 
 
-def group_assets_by_grid(item: pystac.Item) -> dict[GeoBox, Sequence[str]]:
+def group_assets_by_grid(item: pystac.Item) -> dict[GeoBox, list[str]]:
     """
     Groups asset names of a STAC item by their associated GeoBox.
 
@@ -90,22 +92,61 @@ def group_assets_by_grid(item: pystac.Item) -> dict[GeoBox, Sequence[str]]:
     return gbox_to_assets
 
 
+@dataclass(frozen=True)
+@total_ordering
+class EnclosingGeoboxResult:
+    grid_box: GeoBox
+    enclosing_box: GeoBox
+    assets: list[str]
+
+    @cached_property
+    def absolute_resolution(self):
+        return self.grid_box.resolution.map(abs)
+
+    @cached_property
+    def min_gsd(self) -> float:
+        return min(self.absolute_resolution.xy)
+
+    @cached_property
+    def max_gsd(self) -> float:
+        return max(self.absolute_resolution.xy)
+
+    @cached_property
+    def gsd(self) -> float | None:
+        return self.min_gsd if self.min_gsd == self.max_gsd else None
+
+    def __lt__(self, other: "EnclosingGeoboxResult"):
+        self_res = (self.min_gsd, self.max_gsd)
+        other_res = (other.min_gsd, other.max_gsd)
+        if self_res != other_res:
+            return self_res < other_res
+        else:
+            return self.assets < other.assets
+
+
 def enclosing_geoboxes_per_grid(
-    items: pystac.ItemCollection, geometry: geom.Geometry, crs: geom.MaybeCRS = None
-) -> dict[GeoBox, GeoBox]:
+    item: pystac.Item,
+    geometry: geom.Geometry,
+) -> list[EnclosingGeoboxResult]:
     """
     Finds the smallest GeoBox enclosing the given geometry for each grid/resolution present in the given STAC items.
     """
-    if len(items) == 0:
-        raise ValueError('No items provided')
+    parsed_item = odc.stac.parse_item(item)
+    gbox_to_assets = group_assets_by_grid(item)
 
-    parsed_items = list(odc.stac.parse_items(items))
-
-    gbox_to_assets = group_assets_by_grid(items[0])  # assuming that each item is consistent
-    gbox_to_enclosing_box = {}
-    for gbox, asset_names in gbox_to_assets.items():
-        gbox_to_enclosing_box[gbox] = odc.stac.output_geobox(
-            parsed_items, bands=asset_names, geopolygon=geometry, crs=crs
+    results = []
+    for grid_box, asset_names in gbox_to_assets.items():
+        enclosing_box = odc.stac.output_geobox(
+            [parsed_item],
+            bands=asset_names,
+            geopolygon=geometry,
         )
+        result = EnclosingGeoboxResult(
+            grid_box=grid_box,
+            enclosing_box=enclosing_box,
+            assets=asset_names,
+        )
+        results.append(result)
 
-    return gbox_to_enclosing_box
+    results = sorted(results)  # sort in ascending gsd
+    return results
