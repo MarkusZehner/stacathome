@@ -136,7 +136,7 @@ def s2_pc_filter_coverage(items:list , roi: odc.geo.Geometry) -> list:
         proj = v[0].proj_code
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
-        if geo.wgs84_contains(bbox, roi, proj) and \
+        if geo.wgs84_contains(bbox, roi) and \
             latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
             return_items = v
@@ -156,7 +156,7 @@ def s2_pc_filter_coverage(items:list , roi: odc.geo.Geometry) -> list:
 
             return_items.extend(mgrs_tiles[k])
 
-            if geo.wgs84_contains(iterative_shape, roi, proj):
+            if geo.wgs84_contains(iterative_shape, roi):
                 return return_items
     return return_items
 
