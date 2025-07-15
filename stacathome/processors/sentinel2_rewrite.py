@@ -23,7 +23,7 @@ from stacathome.generic_utils import (
 )
 from .base import BaseProcessor, register_default_processor
 from stacathome.providers import BaseProvider
-from stacathome.geo import wgs84_contains, wgs84_overlap_percentage, centroid_distance
+import stacathome.geo as geo
 from stacathome.stac import enclosing_geoboxes_per_grid
 from stacathome.metadata import get_static_metadata, has_static_metadata, get_resampling_per_variable
 
@@ -136,12 +136,12 @@ def s2_pc_filter_coverage(items:list , roi: odc.geo.Geometry) -> list:
         proj = v[0].proj_code
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
-        if wgs84_contains(bbox, roi, proj) and \
+        if geo.wgs84_contains(bbox, roi, proj) and \
             latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
             return_items = v
 
-        centroid_distances[v[0].mgrs_tile] = centroid_distance(bbox, roi)
+        centroid_distances[v[0].mgrs_tile] = geo.centroid_distance(bbox, roi)
 
     if return_items is None:
         centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1])
@@ -156,7 +156,7 @@ def s2_pc_filter_coverage(items:list , roi: odc.geo.Geometry) -> list:
 
             return_items.extend(mgrs_tiles[k])
 
-            if wgs84_contains(iterative_shape, roi, proj):
+            if geo.wgs84_contains(iterative_shape, roi, proj):
                 return return_items
     return return_items
 

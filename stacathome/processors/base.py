@@ -35,6 +35,9 @@ class BaseProcessor:
         :param items: The item collection to download.
         :return: Item collection with downloaded items.
         """
+        if not items:
+            raise ValueError('No items provided')
+
         enclosing = enclosing_geoboxes_per_grid(items[0], roi)
         datasets = {}
         for group_nr, entry in enumerate(enclosing):
@@ -71,6 +74,9 @@ class BaseProcessor:
         :param items: The item collection to download.
         :return: Item collection with downloaded items.
         """
+        if not items:
+            raise ValueError('No items provided')
+
         metadata = None
         dtypes_static = None
         if has_static_metadata(provider.name, items[0].collection_id):

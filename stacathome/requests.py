@@ -17,6 +17,14 @@ __all__ = [
     'load_geoboxed',
 ]
 
+def _get_provider_and_processor(provider_name: str, collection: str, processor: BaseProcessor = None, no_default_processor: bool = False):
+    provider = get_provider(provider_name)
+    if processor is None and not no_default_processor:
+        processor = get_default_processor(provider_name, collection)
+    if processor is None:
+        processor = BaseProcessor()
+    return provider, processor
+
 
 def search_items(
     provider_name: str,
@@ -27,11 +35,7 @@ def search_items(
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ):
-    provider = get_provider(provider_name)
-    if processor is None and not no_default_processor:
-        processor = get_default_processor(provider_name, collection)
-    if processor is None:
-        processor = BaseProcessor()
+    provider, processor = _get_provider_and_processor(provider_name, collection, processor, no_default_processor)
 
     items = provider.request_items(
         collection=collection,
@@ -73,11 +77,7 @@ def load(
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
-    provider = get_provider(provider_name)
-    if processor is None and not no_default_processor:
-        processor = get_default_processor(provider_name, collection)
-    if processor is None:
-        processor = BaseProcessor()
+    provider, processor = _get_provider_and_processor(provider_name, collection, processor, no_default_processor)
 
     items = provider.request_items(
         collection=collection,
@@ -85,8 +85,13 @@ def load(
         endtime=endtime,
         roi=roi,
     )
+    if not items:
+        raise ValueError('No items matched the search query')
 
     items = processor.filter_items(provider, roi, items)
+    if not items:
+        raise ValueError('No items left after filtering')
+
     data = processor.load_items(provider, roi, items)
     data = processor.postprocess_data(provider, roi, data)
 
@@ -102,11 +107,7 @@ def load_geoboxed(
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
-    provider = get_provider(provider_name)
-    if processor is None and not no_default_processor:
-        processor = get_default_processor(provider_name, collection)
-    if processor is None:
-        processor = BaseProcessor()
+    provider, processor = _get_provider_and_processor(provider_name, collection, processor, no_default_processor)
 
     roi = geobox.footprint('EPSG:4326', buffer=10, npoints=4)
 
@@ -116,8 +117,13 @@ def load_geoboxed(
         endtime=endtime,
         roi=roi,
     )
+    if not items:
+        raise ValueError('No items matched the search query')
 
     items = processor.filter_items(provider, roi, items)
+    if not items:
+        raise ValueError('No items left after filtering')
+
     data = processor.load_items_geoboxed(provider, geobox, items)
     data = processor.postprocess_data(provider, roi, data)
 
