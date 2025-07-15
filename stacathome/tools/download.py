@@ -15,6 +15,22 @@ import pandas as pd
 import odc.geo.geom as geom
 
 import stacathome
+import stacathome.geo
+
+
+def print_items(items, geometry):
+    strs = []
+    for item in items:
+        item_geometry = geom.Geometry(item.geometry, crs='EPSG:4326')
+        overlap = stacathome.geo.overlap_percentage(geometry, item_geometry)
+        s = f"  + {item.id} ({item.datetime}, {overlap*100:.1f}% overlap, {len(item.assets)} assets"
+        if 'proj:code' in item.properties:
+            s += f', {item.properties["proj:code"]}'
+        if 'sat:relative_orbit' in item.properties:
+            s += f', orbit {item.properties["sat:relative_orbit"]}'
+        s += ')'
+        strs.append(s)
+    print('\n'.join(strs), flush=True)
 
 
 def main():
@@ -26,6 +42,8 @@ def main():
     parser.add_argument('--roi', '-r', help='Region of interest as GeoJSON')
     parser.add_argument('--outfile', '-o', help='Filename of download.', default='out.zarr')
     parser.add_argument('--dry', '-d', action='store_true', help='If set, do not store but just print to stdout')
+    parser.add_argument('--no-default', action='store_true', help='If set, do not use the default processor if availables')
+    parser.add_argument('--search-only', action='store_true', help='If true, only search for STAC items, do not download')
     args = parser.parse_args()
 
 
@@ -36,30 +54,49 @@ def main():
     roi: str = args.roi
     outfile = Path(args.outfile)
     dryrun: bool = args.dry
+    no_default: bool = args.no_default
+    search_only: bool = args.search_only    
 
     provider = stacathome.get_provider(provider_name)
     if not provider.has_collection(collection):
         parser.exit(1, f'Unknown collection: {collection}')
 
-
     geojson = json.loads(roi)
-    geometry = geom.Geometry(geojson)
+    geometry = geom.Geometry(geojson, crs='EPSG:4326')
 
-    items, data = stacathome.load(
-        provider_name, 
-        collection, 
-        starttime=start,
-        endtime=end,
-        roi=geometry
-    )
+    if search_only:
+        items = stacathome.search_items(
+            provider_name, 
+            collection, 
+            starttime=start,
+            endtime=end,
+            roi=geometry,
+            no_default_processor=no_default
+        )
+        data = None
+    else:
+        items, data = stacathome.load(
+            provider_name, 
+            collection, 
+            starttime=start,
+            endtime=end,
+            roi=geometry,
+            no_default_processor=no_default
+        )
+
+    if data is None:
+        print(f'Found {len(items)} items: ', flush=True)
+        print_items(items, geometry)
+        return
 
     print(f'Downloaded {len(items)} items: ', flush=True)
-    print('\n'.join([item.id for item in items]))
+    print_items(items, geometry)
     print('-'*120)
     print(data, flush=True)
 
     if not dryrun:
         data.to_zarr(outfile)
+
 
 if __name__ == '__main__':
     main()
