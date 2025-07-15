@@ -153,3 +153,20 @@ def wgs84_contains(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool:
     geometry1 = to_equal_area(geometry1)
     geometry2 = to_equal_area(geometry2)
     return geometry1.contains(geometry2)
+
+
+def wgs84_intersects(shape1: geom.Geometry, shape2: geom.Geometry, local_proj_code: str) -> bool:
+    """
+    Check if one shape intersects another shape in WGS 84 (EPSG:4326) coordinate reference system if projected to a local coordinate system.
+
+    Args:
+        shape1 (shapely.Geometry): The first shape.
+        shape2 (shapely.Geometry): The second shape.
+        local_proj_code (str): The local projection code to transform the shapes before checking containment.
+
+    Returns:
+        bool: True if shape1 fully contains shape2, False otherwise.
+    """
+    shape1 = shape1.to_crs(local_proj_code)
+    shape2 = shape2.to_crs(local_proj_code)
+    return shape1.intersects(shape2)
