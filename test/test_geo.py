@@ -77,3 +77,21 @@ class TestGeo:
         geom2 = equal_area_box(500, 500, 2000, 2000)
         assert not geo.wgs84_contains(geom1, geom2)
         assert not geo.wgs84_contains(geom2, geom1)
+
+    
+    def test_intersects(self):
+        geom1 = equal_area_box(0, 0, 1000, 1000)
+        
+        p1 = geom.point(999.5, 999.5, crs='EPSG:8857').to_crs('EPSG:4326')
+        p2 = p1.transform(lambda x,y: (x+2, y+2))
+        p3 = p1.transform(lambda x,y: (x+2, y))
+        polygon = geom.polygon([p1.points[0], p2.points[0], p3.points[0], p1.points[0]], crs='EPSG:4326')
+        assert geo.wgs84_intersects(geom1, polygon)
+        assert geo.wgs84_intersects(polygon, geom1)
+
+    
+    def test_intersects_disjunct(self):
+        geom1 = equal_area_box(0, 0, 1000, 1000)
+        p1 = geom.point(1000.1, 1000.1, crs='EPSG:8857').to_crs('EPSG:4326')
+        assert not geo.wgs84_intersects(geom1, p1)
+        assert not geo.wgs84_intersects(p1, geom1)

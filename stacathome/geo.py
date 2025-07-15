@@ -142,11 +142,12 @@ def wgs84_overlap_percentage(shape1: geom.Geometry, shape2: geom.Geometry) -> fl
 
 def wgs84_contains(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool:
     """
-    Check if one geometry fuly contains another geometry when interpreted as geodesic polygons on the WGS 84 reference ellipsoid. 
+    Check if one geometry fully contains another geometry when interpreted as geodesic polygons on the WGS 84 reference ellipsoid. 
 
     Args:
-        shape1 (Geometry): The first geometry.
-        shape2 (Geometry): The second geometry.
+        geometry1 (Geometry): The first geometry.
+        geometry2 (Geometry): The second geometry.
+
     Returns:
         bool: True if geometry1 fully contains geometry2, False otherwise.
     """
@@ -155,18 +156,17 @@ def wgs84_contains(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool:
     return geometry1.contains(geometry2)
 
 
-def wgs84_intersects(shape1: geom.Geometry, shape2: geom.Geometry, local_proj_code: str) -> bool:
+def wgs84_intersects(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool:
     """
-    Check if one shape intersects another shape in WGS 84 (EPSG:4326) coordinate reference system if projected to a local coordinate system.
+    Check if one geometry intersects with another geometry when interpreted as geodesic polygons on the WGS 84 reference ellipsoid.
 
     Args:
-        shape1 (shapely.Geometry): The first shape.
-        shape2 (shapely.Geometry): The second shape.
-        local_proj_code (str): The local projection code to transform the shapes before checking containment.
-
+        geometry1 (Geometry): The first geometry.
+        geometry2 (Geometry): The second geometry.
+    
     Returns:
-        bool: True if shape1 fully contains shape2, False otherwise.
+        bool: True if geometry1 intersects geometry2, False otherwise.
     """
-    shape1 = shape1.to_crs(local_proj_code)
-    shape2 = shape2.to_crs(local_proj_code)
-    return shape1.intersects(shape2)
+    geometry1 = to_equal_area(geometry1)
+    geometry2 = to_equal_area(geometry2)
+    return geometry1.intersects(geometry2)
