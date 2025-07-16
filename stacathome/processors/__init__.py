@@ -1,5 +1,5 @@
 from .base import BaseProcessor, get_default_processor, has_default_processor, register_default_processor
-from .sentinel2_rewrite import Sentinel2L2AProcessor
+from .sentinel2 import Sentinel2L2AProcessor
 
 __all__ = [
     'BaseProcessor',
