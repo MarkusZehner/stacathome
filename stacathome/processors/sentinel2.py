@@ -90,7 +90,7 @@ class S2Item(pystac.Item):
         return geom.Geometry(box(*self._item.bbox), '4326')
 
 
-def s2_pc_filter_newest_processing_time(items: list) -> list:
+def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     """
     Returns the newest veriosn of S2 L2A items using the processing time from the ID.
     The ID is expected to be in the format 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
@@ -104,7 +104,7 @@ def s2_pc_filter_newest_processing_time(items: list) -> list:
     return [v[1] for v in filtered.values()]
 
 
-def s2_pc_filter_coverage(items: list, roi: geom.Geometry) -> list:
+def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Item]:
     """
     Filter Sentinel-2 items based on their coverage of the area of interest.
     Returns a list items required to cover the area of interest.
@@ -148,11 +148,10 @@ def s2_pc_filter_coverage(items: list, roi: geom.Geometry) -> list:
     return return_items
 
 
-def s2_pc_filter_geometry_coverage(items: list, roi: geom.Geometry) -> list:
+def s2_pc_filter_geometry_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Item]:
     return_list = []
     for item in items:
-        i = S2Item(item) if not isinstance(item, S2Item) else item
-        if geo.wgs84_intersects(i.geometry_odc_geometry, roi):
+        if geo.wgs84_intersects(item.geometry_odc_geometry, roi):
             return_list.append(item)
     return return_list
 

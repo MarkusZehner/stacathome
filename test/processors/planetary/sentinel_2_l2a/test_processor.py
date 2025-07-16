@@ -1,10 +1,12 @@
+import pytest 
 import shapely
 from odc.geo.geobox import GeoBox
-from stacathome.processors.sentinel2_rewrite import (
+
+from stacathome.processors.sentinel2 import (
     s2_pc_filter_coverage,
     s2_pc_filter_geometry_coverage,
     s2_pc_filter_newest_processing_time,
-    Sentinel2L2AProcessor,
+    S2Item,
 )
 from stacathome.providers import get_provider
 
@@ -32,6 +34,8 @@ def create_test_geobox(center_p, crs='EPSG:32632', resolution=10, size_box=500):
 
 class TestSentinel2L2AProcessor:
 
+    @pytest.mark.remote
+    @pytest.mark.planetary
     def test_filtering(self):
         provider = get_provider('planetary_computer')
         # processor = Sentinel2L2AProcessor()
@@ -50,19 +54,16 @@ class TestSentinel2L2AProcessor:
             endtime='2023-07-30',
             roi=area_of_interest,
         )
-
+        s2_items = [S2Item(item) for item in items]
         assert len(items) == 72
 
-        only_newer_processing = s2_pc_filter_newest_processing_time(items)
-
+        only_newer_processing = s2_pc_filter_newest_processing_time(s2_items)
         assert len(only_newer_processing) == 48
 
         coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, area_of_interest)
-
         assert len(coverage_filtered_items) == 8
 
         geometry_filtered_items = s2_pc_filter_geometry_coverage(coverage_filtered_items, roi_small)
-
         assert len(geometry_filtered_items) == 4
 
         all_returns = [

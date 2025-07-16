@@ -33,6 +33,7 @@ def example_geobox(center, crs='EPSG:32632', resolution=10, size=500):
 class TestSentinel2L2AIntegration:
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_search_items_geoboxed_nodefault(self):
         expected_ids = [
             'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
@@ -55,6 +56,7 @@ class TestSentinel2L2AIntegration:
         assert {item.id for item in items} == set(expected_ids)
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_search_items_geoboxed(self):
         expected_ids = [
             'S2A_MSIL2A_20230106T102411_R065_T32UPB_20240807T164608',
@@ -74,6 +76,7 @@ class TestSentinel2L2AIntegration:
         assert {item.id for item in items} == set(expected_ids)
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_load_geoboxed_nodefault(self):
         # This is actually a special case:
         # We have 4 items here, but only two observations, two items are reprocessings!
@@ -161,6 +164,7 @@ class TestSentinel2L2AIntegration:
         assert np.isin(unique_values, np.arange(1, 12)).all()
 
     @pytest.mark.remote
+    @pytest.mark.planetary
     def test_load_geoboxed(self):
         # This is actually a special case:
         # We have 4 items here, but only two observations, two items are reprocessings!
