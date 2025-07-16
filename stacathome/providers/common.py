@@ -11,7 +11,8 @@ from stacathome.metadata import CollectionMetadata
 
 
 # Registry for provider classes and instances
-_provider_classes: dict[str, Callable] = {}
+ProviderFactory = Callable[[str], 'BaseProvider']
+_provider_classes: dict[str, ProviderFactory] = {}
 _providers: dict[str, "BaseProvider"] = {}
 
 
@@ -205,19 +206,19 @@ def get_provider(provider_name: str) -> BaseProvider:
     return provider
 
 
-def register_provider(provider_name: str, factory: Callable[[str], BaseProvider]):
+def register_provider(provider_name: str, factory: ProviderFactory):
     """
     Registers a provider class with a given name.
 
     Args:
         provider_name (str): The name of the provider.
-        factory (Callable[[str], BaseProvider]): A callable that returns an instance of the provider. Must accept provider_name as first argument.
+        factory (ProviderFactory): A callable that returns an instance of the provider. Must accept provider_name as first argument.
 
     Raises:
         ValueError: If the factory is not callable or the provider name is already registered.
     """
     if not callable(factory):
-        raise ValueError("Factory must be a callable that returns an instance of BaseProvider.")
+        raise TypeError('factory must be callable')
     if provider_name in _provider_classes:
         raise ValueError(f"Provider '{provider_name}' is already registered.")
     _provider_classes[provider_name] = factory

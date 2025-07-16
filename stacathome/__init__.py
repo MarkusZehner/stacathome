@@ -1,4 +1,5 @@
 from .providers import BaseProvider, get_provider, register_provider
+from .processors import BaseProcessor, get_default_processor, has_default_processor, register_default_processor
 from .requests import load, load_geoboxed, search_items, search_items_geoboxed
 
 __all__ = [
@@ -9,4 +10,8 @@ __all__ = [
     'get_provider',
     'register_provider',
     'BaseProvider',
+    'BaseProcessor',
+    'get_default_processor',
+    'has_default_processor',
+    'register_default_processor',
 ]

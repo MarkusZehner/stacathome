@@ -12,6 +12,11 @@ class TestProviderRegistry:
         with pytest.raises(KeyError):
             get_provider('test_provider')
 
+        with pytest.raises(TypeError):
+            register_provider('test_provider', 1212314)
+        with pytest.raises(TypeError):
+            register_provider('test_provider', 'FakeProvider')
+
         register_provider('test_provider', FakeProvider)
 
         provider = get_provider('test_provider')
@@ -19,4 +24,4 @@ class TestProviderRegistry:
         assert provider.name == 'test_provider'
 
         provider2 = get_provider('test_provider')
-        assert provider is provider2  # Ensure the same instance is returned
+        assert provider is provider2  # ensure the same instance is returned

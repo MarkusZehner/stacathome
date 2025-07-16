@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pystac
 import xarray as xr
 from odc.geo.geobox import GeoBox
@@ -7,7 +9,11 @@ from stacathome.metadata import get_static_metadata
 from stacathome.providers import BaseProvider
 from stacathome.stac import enclosing_geoboxes_per_grid
 
-_processor_registry: dict[tuple[str, str], "BaseProcessor"] = {}
+
+ProcessorFactory = Callable[[], 'BaseProcessor']
+_ProcessorRegistryKey = tuple[str, str]
+_processor_factories: dict[_ProcessorRegistryKey, ProcessorFactory] = {}
+_processor_instances: dict[_ProcessorRegistryKey, 'BaseProcessor'] = {}
 
 
 class BaseProcessor:
@@ -132,11 +138,14 @@ class SimpleProcessor(BaseProcessor):
         return xr_dataset
 
 
-def register_default_processor(provider_name: str, collection: str, processor: BaseProcessor):
+def register_default_processor(provider_name: str, collection: str, factory: ProcessorFactory):
+    if not callable(factory):
+        raise TypeError('factory must be callable')
+
     key = (provider_name, collection)
-    if key in _processor_registry:
+    if key in _processor_factories:
         raise ValueError(f'Processor for {provider_name} and {collection} is already registered.')
-    _processor_registry[(provider_name, collection)] = processor
+    _processor_factories[(provider_name, collection)] = factory
 
 
 def has_default_processor(provider_name: str, collection: str) -> bool:
@@ -146,7 +155,7 @@ def has_default_processor(provider_name: str, collection: str) -> bool:
     :param collection: The name of the collection.
     :return: True if a default processor is registered, False otherwise.
     """
-    return (provider_name, collection) in _processor_registry
+    return (provider_name, collection) in _processor_factories
 
 
 def get_default_processor(provider_name: str, collection: str) -> BaseProcessor | None:
@@ -157,4 +166,11 @@ def get_default_processor(provider_name: str, collection: str) -> BaseProcessor 
     :return: The default processor for the specified provider and collection or None if not found.
     """
     key = (provider_name, collection)
-    return _processor_registry.get(key)
+    if key in _processor_instances:
+        return _processor_instances[key]
+    elif key in _processor_factories:
+        processor = _processor_factories[key]()
+        _processor_instances[key] = processor
+        return processor
+    else:
+        return None

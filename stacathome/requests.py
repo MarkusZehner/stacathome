@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Iterable
 
 import pystac
 import shapely
@@ -7,7 +6,7 @@ import xarray as xr
 from odc.geo.geobox import GeoBox
 
 from stacathome.processors import BaseProcessor, get_default_processor
-from stacathome.providers import BaseProvider, get_provider
+from stacathome.providers import get_provider
 
 
 __all__ = [
