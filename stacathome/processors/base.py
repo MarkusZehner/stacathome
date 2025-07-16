@@ -45,9 +45,9 @@ class BaseProcessor:
         if not items:
             raise ValueError('No items provided')
 
-        enclosing = enclosing_geoboxes_per_grid(items[0], roi)
+        enclosing_boxes = enclosing_geoboxes_per_grid(items[0], roi)
         datasets = {}
-        for group_nr, entry in enumerate(enclosing):
+        for group_nr, entry in enumerate(enclosing_boxes):
             asset_names = set(entry.assets) & set(variables) if variables else set(entry.assets)
             if not asset_names:
                 continue
@@ -59,8 +59,10 @@ class BaseProcessor:
                 variables=asset_names,
             )
 
-        for group_nr in datasets.keys():
-            datasets[group_nr] = datasets[group_nr].rename({'x': f'x_{group_nr}', 'y': f'y_{group_nr}'})
+        # Rename coords if there is more than one resolution
+        if len(enclosing_boxes) > 1:
+            for group_nr in datasets.keys():
+                datasets[group_nr] = datasets[group_nr].rename({'x': f'x_{group_nr}', 'y': f'y_{group_nr}'})
 
         cube = xr.merge(datasets.values())
         return cube
