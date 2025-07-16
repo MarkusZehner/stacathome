@@ -1,6 +1,5 @@
-import math
+import dataclasses
 import pprint
-from dataclasses import field
 from typing import Iterable, Optional
 
 from pydantic.dataclasses import dataclass as pydantic_dataclass
@@ -15,7 +14,7 @@ class Variable:
     longname: Optional[str] = None
     description: Optional[str] = None
     unit: Optional[str] = None
-    roles: list[str] = field(default_factory=list)
+    roles: list[str] = dataclasses.field(default_factory=list)
     dtype: Optional[str] = None
     preferred_resampling: Optional[str] = None  # possible values: nearest, bilinear, mode
     nodata_value: Optional[int | float] = None
@@ -26,7 +25,7 @@ class Variable:
     full_width_half_max: Optional[float] = None
 
     def to_attributes(self) -> dict[str, str]:
-        attrs = self.asdict()
+        attrs = dataclasses.asdict(self)
         del attrs['name']
         del attrs['dtype']
         del attrs['preferred_resampling']

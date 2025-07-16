@@ -8,11 +8,10 @@ import pystac
 import shapely
 import xarray as xr
 from shapely import box
-from xarray import Dataset
 
 import stacathome.geo as geo
 from stacathome.providers import BaseProvider
-from .base import SimpleProcessor
+from .base import register_default_processor, SimpleProcessor
 
 
 class S2Item(pystac.Item):
@@ -153,7 +152,7 @@ def s2_pc_filter_geometry_coverage(items: list, roi: geom.Geometry) -> list:
     return_list = []
     for item in items:
         i = S2Item(item) if not isinstance(item, S2Item) else item
-        if geo.wgs84_intersects(i.geometry_odc_geometry, roi, i.proj_code):
+        if geo.wgs84_intersects(i.geometry_odc_geometry, roi):
             return_list.append(item)
     return return_list
 
@@ -177,6 +176,7 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         Reoders the Items by the tile id, first item(s) corresponding to the tile closest to the roi.
 
         """
+        print('test')
         s2_items = [S2Item(item) for item in items]
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
         s2_items = s2_pc_filter_coverage(s2_items, roi)
@@ -191,25 +191,15 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         self,
         provider,
         roi,
-        data: Dataset,
-        harmonize=False,
-        mask_by_scl: bool = False,
-        valid_scl_values: list[int] | None = None,
-    ) -> Dataset:
+        data: xr.Dataset,
+    ) -> xr.Dataset:
         data = filter_no_data_timesteps(data)
-        data = rename_s2_coords(data)
-        if harmonize:
+        if self.adjust_baseline:
             data = harmonize_s2_data(data)
-            for variable in data.data_vars:
-                data[variable].attrs['harmonized'] = True
-
-        # if mask_by_scl:
-        #     data = mask_data_by_scl(data, valid_scl_values)
-
         return data
 
 
-def mask_data_by_scl(data: Dataset, valid_scl_values: list[int] | None = None):
+def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None):
     raise NotImplementedError
     if not 'SCL' in data.data_vars:
         raise ValueError('"SCL" variable not in data_vars, which is required by mask_by_scl')
@@ -226,7 +216,7 @@ def mask_data_by_scl(data: Dataset, valid_scl_values: list[int] | None = None):
     return None
 
 
-def filter_no_data_timesteps(data: Dataset, indicator_variable: str | None = None):
+def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = None):
     if not indicator_variable:
         coords_res = _get_coord_name_and_resolution(data)
         coarsest_axes = coords_res[max(coords_res)]
@@ -241,16 +231,7 @@ def filter_no_data_timesteps(data: Dataset, indicator_variable: str | None = Non
     return data.isel(time=mask_over_time)
 
 
-def rename_s2_coords(data: Dataset):
-    coord_names_resolution = _get_coord_name_and_resolution(data)
-    rename_dict = {}
-    for resolution, coord_names in coord_names_resolution.items():
-        renamed_coords = {coord: f"{coord.split('_')[0]}_{str(int(resolution))}" for coord in coord_names}
-        rename_dict |= renamed_coords
-    return data.rename(rename_dict)
-
-
-def _get_coord_name_and_resolution(data: Dataset) -> dict[float, str]:
+def _get_coord_name_and_resolution(data: xr.Dataset) -> dict[float, str]:
     coord_names_resolution = defaultdict(list)
     for coord in data.coords.values():
         if coord.name.startswith('x') or coord.name.startswith('y'):
@@ -258,7 +239,7 @@ def _get_coord_name_and_resolution(data: Dataset) -> dict[float, str]:
     return dict(coord_names_resolution)
 
 
-def harmonize_s2_data(data: Dataset, scale: bool = False) -> xr.Dataset:
+def harmonize_s2_data(data: xr.Dataset, scale: bool = False) -> xr.Dataset:
     """
     Harmonize new Sentinel-2 data to the old baseline. Data after 25-01-2022 is clipped
     to 1000 and then subtracted by 1000.
@@ -311,3 +292,6 @@ def harmonize_s2_data(data: Dataset, scale: bool = False) -> xr.Dataset:
         new[k].attrs = v
 
     return new
+
+
+register_default_processor('planetary_computer', 'sentinel-2-l2a', Sentinel2L2AProcessor)

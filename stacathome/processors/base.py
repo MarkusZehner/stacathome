@@ -133,7 +133,7 @@ class SimpleProcessor(BaseProcessor):
         for variable_name in xr_dataset.keys():
             var_attrs = attrs_per_var.get(variable_name, {})
             var_attrs['resampling'] = resampling.get('variable_name', 'nearest')
-            xr_dataset[xr_dataset].attrs.update(var_attrs)
+            xr_dataset[variable_name].attrs.update(var_attrs)
 
         return xr_dataset
 
