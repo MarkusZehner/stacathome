@@ -17,7 +17,10 @@ __all__ = [
     'load_geoboxed',
 ]
 
-def _get_provider_and_processor(provider_name: str, collection: str, processor: BaseProcessor = None, no_default_processor: bool = False):
+
+def _get_provider_and_processor(
+    provider_name: str, collection: str, processor: BaseProcessor = None, no_default_processor: bool = False
+):
     provider = get_provider(provider_name)
     if processor is None and not no_default_processor:
         processor = get_default_processor(provider_name, collection)

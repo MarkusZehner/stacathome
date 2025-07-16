@@ -57,7 +57,7 @@ class CollectionMetadata:
     def dtype_per_variable(self) -> dict[str, str]:
         return {name: var.dtype for name, var in self.variables.items() if var.dtype}
 
-    def attributes_per_variable(self) -> dict[str, dict[str,str]]:
+    def attributes_per_variable(self) -> dict[str, dict[str, str]]:
         return {name: var.to_attributes() for name, var in self.variables.items()}
 
     def aspystr(self) -> str:

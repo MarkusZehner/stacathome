@@ -11,8 +11,8 @@ import argparse
 import json
 from pathlib import Path
 
-import pandas as pd
 import odc.geo.geom as geom
+import pandas as pd
 
 import stacathome
 import stacathome.geo
@@ -42,20 +42,23 @@ def main():
     parser.add_argument('--roi', '-r', help='Region of interest as GeoJSON')
     parser.add_argument('--outfile', '-o', help='Filename of download.', default='out.zarr')
     parser.add_argument('--dry', '-d', action='store_true', help='If set, do not store but just print to stdout')
-    parser.add_argument('--no-default', action='store_true', help='If set, do not use the default processor if availables')
-    parser.add_argument('--search-only', action='store_true', help='If true, only search for STAC items, do not download')
+    parser.add_argument(
+        '--no-default', action='store_true', help='If set, do not use the default processor if availables'
+    )
+    parser.add_argument(
+        '--search-only', action='store_true', help='If true, only search for STAC items, do not download'
+    )
     args = parser.parse_args()
-
 
     provider_name: str = args.provider
     collection: str = args.collection
     start = pd.to_datetime(args.start).to_pydatetime()
-    end =  pd.to_datetime(args.end).to_pydatetime()
+    end = pd.to_datetime(args.end).to_pydatetime()
     roi: str = args.roi
     outfile = Path(args.outfile)
     dryrun: bool = args.dry
     no_default: bool = args.no_default
-    search_only: bool = args.search_only    
+    search_only: bool = args.search_only
 
     provider = stacathome.get_provider(provider_name)
     if not provider.has_collection(collection):
@@ -66,22 +69,12 @@ def main():
 
     if search_only:
         items = stacathome.search_items(
-            provider_name, 
-            collection, 
-            starttime=start,
-            endtime=end,
-            roi=geometry,
-            no_default_processor=no_default
+            provider_name, collection, starttime=start, endtime=end, roi=geometry, no_default_processor=no_default
         )
         data = None
     else:
         items, data = stacathome.load(
-            provider_name, 
-            collection, 
-            starttime=start,
-            endtime=end,
-            roi=geometry,
-            no_default_processor=no_default
+            provider_name, collection, starttime=start, endtime=end, roi=geometry, no_default_processor=no_default
         )
 
     if data is None:
@@ -91,7 +84,7 @@ def main():
 
     print(f'Downloaded {len(items)} items: ', flush=True)
     print_items(items, geometry)
-    print('-'*120)
+    print('-' * 120)
     print(data, flush=True)
 
     if not dryrun:

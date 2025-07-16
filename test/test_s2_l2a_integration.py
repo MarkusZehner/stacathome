@@ -53,7 +53,7 @@ class TestSentinel2L2AIntegration:
         )
 
         assert isinstance(items, pystac.ItemCollection)
-        assert set(item.id for item in items) == set(expected_ids)
+        assert {item.id for item in items} == set(expected_ids)
 
     @pytest.mark.remote
     def test_load_geoboxed_s2l2a_raw(self):
@@ -69,8 +69,22 @@ class TestSentinel2L2AIntegration:
         ]
 
         expected_vars = {
-            'AOT', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07',
-            'B08', 'B09', 'B11', 'B12', 'B8A', 'SCL', 'WVP', 'visual',
+            'AOT',
+            'B01',
+            'B02',
+            'B03',
+            'B04',
+            'B05',
+            'B06',
+            'B07',
+            'B08',
+            'B09',
+            'B11',
+            'B12',
+            'B8A',
+            'SCL',
+            'WVP',
+            'visual',
         }
 
         data_vars = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11', 'B12', 'B8A']
@@ -88,7 +102,7 @@ class TestSentinel2L2AIntegration:
         assert isinstance(items, pystac.ItemCollection)
         assert isinstance(ds, xr.Dataset)
 
-        assert set(item.id for item in items) == set(expected_ids)
+        assert {item.id for item in items} == set(expected_ids)
 
         # Test if all variables are there
         assert set(ds.data_vars.keys()) == expected_vars
@@ -111,7 +125,9 @@ class TestSentinel2L2AIntegration:
 
         # Test dtypes
         for var in data_vars:
-            assert ds[var].dtype == np.dtype('float32')  # geotiff is not stored in int16, no conversion done from our side
+            assert ds[var].dtype == np.dtype(
+                'float32'
+            )  # geotiff is not stored in int16, no conversion done from our side
 
         # Test for plausible values in data layers
         for var in data_vars:

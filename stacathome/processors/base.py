@@ -3,9 +3,9 @@ import xarray as xr
 from odc.geo.geobox import GeoBox
 from odc.geo.geom import Geometry
 
+from stacathome.metadata import get_static_metadata
 from stacathome.providers import BaseProvider
 from stacathome.stac import enclosing_geoboxes_per_grid
-from stacathome.metadata import get_static_metadata
 
 _processor_registry: dict[tuple[str, str], "BaseProcessor"] = {}
 
@@ -22,11 +22,13 @@ class BaseProcessor:
         """
         return items
 
-    def load_items(self, provider: BaseProvider,
-                   roi: Geometry,
-                   items: pystac.ItemCollection,
-                   variables: list[str] | None = None,
-                   ) -> xr.Dataset:
+    def load_items(
+        self,
+        provider: BaseProvider,
+        roi: Geometry,
+        items: pystac.ItemCollection,
+        variables: list[str] | None = None,
+    ) -> xr.Dataset:
         """
         Download items in the collection.
         :param provider: The provider to use for downloading.
@@ -57,13 +59,15 @@ class BaseProcessor:
         cube = xr.merge(datasets.values())
         return cube
 
-    def load_items_geoboxed(self, provider: BaseProvider,
-                            geobox: GeoBox,
-                            items: pystac.ItemCollection,
-                            variables: list[str] | None = None,
-                            resampling:dict[str, str] | None = None,
-                            dtype: dict[str, float] | None = None,
-                            ) -> xr.Dataset:
+    def load_items_geoboxed(
+        self,
+        provider: BaseProvider,
+        geobox: GeoBox,
+        items: pystac.ItemCollection,
+        variables: list[str] | None = None,
+        resampling: dict[str, str] | None = None,
+        dtype: dict[str, float] | None = None,
+    ) -> xr.Dataset:
         """
         Download items in the collection.
         :param provider: The provider to use for downloading.
@@ -73,8 +77,8 @@ class BaseProcessor:
         """
         if not items:
             raise ValueError('No items provided')
-        variables = set(variables) if variables else None        
-        loaded_xr = provider.load_items(items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype)    
+        variables = set(variables) if variables else None
+        loaded_xr = provider.load_items(items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype)
         return loaded_xr
 
     def postprocess_data(self, provider: BaseProvider, roi: Geometry, data: xr.Dataset) -> xr.Dataset:
@@ -91,26 +95,29 @@ class SimpleProcessor(BaseProcessor):
     Simple processor that looks up preferred resampling and dtype from static metadata, if available.
     Also adds metadata as attributes to the downloaded dataset.
     """
-    def load_items_geoboxed(self, provider: BaseProvider,
-                            geobox: GeoBox,
-                            items: pystac.ItemCollection,
-                            variables: list[str] | None = None,
-                            resampling:dict[str, str] | None = None,
-                            dtype: dict[str, float] | None = None,
-                            ) -> xr.Dataset:
+
+    def load_items_geoboxed(
+        self,
+        provider: BaseProvider,
+        geobox: GeoBox,
+        items: pystac.ItemCollection,
+        variables: list[str] | None = None,
+        resampling: dict[str, str] | None = None,
+        dtype: dict[str, float] | None = None,
+    ) -> xr.Dataset:
         if not items:
             raise ValueError('No items provided')
 
-        collection =  items[0].collection_id
+        collection = items[0].collection_id
         metadata = get_static_metadata(provider.name, collection)
-            
+
         resampling = metadata.preferred_resampling_per_variable() if not resampling and metadata else {}
         dtype = metadata.dtype_per_variable() if not dtype and metadata else {}
-        
+
         xr_dataset = super().load_items_geoboxed(
-            provider=provider, 
-            geobox=geobox, 
-            items=items, 
+            provider=provider,
+            geobox=geobox,
+            items=items,
             variables=variables,
             resampling=resampling,
             dtype=dtype,
@@ -121,7 +128,7 @@ class SimpleProcessor(BaseProcessor):
             var_attrs = attrs_per_var.get(variable_name, {})
             var_attrs['resampling'] = resampling.get('variable_name', 'nearest')
             xr_dataset[xr_dataset].attrs.update(var_attrs)
-    
+
         return xr_dataset
 
 

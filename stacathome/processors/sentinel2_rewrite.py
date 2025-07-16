@@ -3,15 +3,15 @@ from collections import defaultdict
 from functools import cached_property
 
 import numpy as np
-import xarray as xr
+import odc.geo.geom as geom
 import pystac
 import shapely
+import xarray as xr
 from shapely import box
-import odc.geo.geom as geom
 from xarray import Dataset
 
-from stacathome.providers import BaseProvider
 import stacathome.geo as geo
+from stacathome.providers import BaseProvider
 from .base import SimpleProcessor
 
 
@@ -35,7 +35,6 @@ class S2Item(pystac.Item):
         if 'proj:code' not in self._item.properties:
             raise ValueError("Item does not have 'proj:code' property.")
 
-
     def __getattr__(self, item):
         """
         Delegate attribute access to the underlying pystac.Item.
@@ -47,7 +46,7 @@ class S2Item(pystac.Item):
         """
         Get the Sentinel-2 specific properties from the item.
         """
-        return {k: v for k,v in self._item.properties.items() if k.startswith('s2:')}
+        return {k: v for k, v in self._item.properties.items() if k.startswith('s2:')}
 
     @property
     def proj_code(self):
@@ -105,7 +104,8 @@ def s2_pc_filter_newest_processing_time(items: list) -> list:
             filtered[base_name] = (process_time, item)
     return [v[1] for v in filtered.values()]
 
-def s2_pc_filter_coverage(items:list , roi: geom.Geometry) -> list:
+
+def s2_pc_filter_coverage(items: list, roi: geom.Geometry) -> list:
     """
     Filter Sentinel-2 items based on their coverage of the area of interest.
     Returns a list items required to cover the area of interest.
@@ -117,14 +117,16 @@ def s2_pc_filter_coverage(items:list , roi: geom.Geometry) -> list:
     centroid_distances = {}
     latitude_distance_from_utm_center = 500000  # not a good candiate if > half of a utm zone
     return_items = None
-    
+
     for v in mgrs_tiles.values():
         bbox = v[0].bbox_odc_geometry
         proj = v[0].proj_code
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
-        if geo.wgs84_contains(bbox, roi) and \
-            latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center:
+        if (
+            geo.wgs84_contains(bbox, roi)
+            and latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center
+        ):
             latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
             return_items = v
 
@@ -147,7 +149,7 @@ def s2_pc_filter_coverage(items:list , roi: geom.Geometry) -> list:
     return return_items
 
 
-def s2_pc_filter_geometry_coverage(items:list , roi: geom.Geometry) -> list:
+def s2_pc_filter_geometry_coverage(items: list, roi: geom.Geometry) -> list:
     return_list = []
     for item in items:
         i = S2Item(item) if not isinstance(item, S2Item) else item
@@ -164,8 +166,10 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         """
         self.convert_to_f32 = convert_to_f32
         self.adjust_baseline = adjust_baseline
-    
-    def filter_items(self, provider: BaseProvider, roi: geom.Geometry, items: pystac.ItemCollection) -> pystac.ItemCollection:
+
+    def filter_items(
+        self, provider: BaseProvider, roi: geom.Geometry, items: pystac.ItemCollection
+    ) -> pystac.ItemCollection:
         """
 
         Filter Sentinel-2 items based on the area of interest and the newest processing time.
@@ -182,22 +186,30 @@ class Sentinel2L2AProcessor(SimpleProcessor):
             clone_items=False,
             extra_fields=items.extra_fields,
         )
-    
-    def postprocess_data(self, provider, roi, data:Dataset, harmonize = False,
-                         mask_by_scl: bool = False, valid_scl_values:list[int]| None=None) -> Dataset:
+
+    def postprocess_data(
+        self,
+        provider,
+        roi,
+        data: Dataset,
+        harmonize=False,
+        mask_by_scl: bool = False,
+        valid_scl_values: list[int] | None = None,
+    ) -> Dataset:
         data = filter_no_data_timesteps(data)
         data = rename_s2_coords(data)
         if harmonize:
             data = harmonize_s2_data(data)
             for variable in data.data_vars:
                 data[variable].attrs['harmonized'] = True
-                
+
         # if mask_by_scl:
         #     data = mask_data_by_scl(data, valid_scl_values)
-            
+
         return data
 
-def mask_data_by_scl(data:Dataset, valid_scl_values:list[int] | None = None):
+
+def mask_data_by_scl(data: Dataset, valid_scl_values: list[int] | None = None):
     raise NotImplementedError
     if not 'SCL' in data.data_vars:
         raise ValueError('"SCL" variable not in data_vars, which is required by mask_by_scl')
@@ -214,7 +226,7 @@ def mask_data_by_scl(data:Dataset, valid_scl_values:list[int] | None = None):
     return None
 
 
-def filter_no_data_timesteps(data:Dataset, indicator_variable:str | None = None):
+def filter_no_data_timesteps(data: Dataset, indicator_variable: str | None = None):
     if not indicator_variable:
         coords_res = _get_coord_name_and_resolution(data)
         coarsest_axes = coords_res[max(coords_res)]
@@ -229,19 +241,16 @@ def filter_no_data_timesteps(data:Dataset, indicator_variable:str | None = None)
     return data.isel(time=mask_over_time)
 
 
-def rename_s2_coords(data:Dataset):
+def rename_s2_coords(data: Dataset):
     coord_names_resolution = _get_coord_name_and_resolution(data)
     rename_dict = {}
     for resolution, coord_names in coord_names_resolution.items():
-        renamed_coords = {
-            coord: f"{coord.split('_')[0]}_{str(int(resolution))}"
-            for coord in coord_names
-        }
+        renamed_coords = {coord: f"{coord.split('_')[0]}_{str(int(resolution))}" for coord in coord_names}
         rename_dict |= renamed_coords
     return data.rename(rename_dict)
-      
-      
-def _get_coord_name_and_resolution(data:Dataset) -> dict[float, str]:
+
+
+def _get_coord_name_and_resolution(data: Dataset) -> dict[float, str]:
     coord_names_resolution = defaultdict(list)
     for coord in data.coords.values():
         if coord.name.startswith('x') or coord.name.startswith('y'):
@@ -277,7 +286,7 @@ def harmonize_s2_data(data: Dataset, scale: bool = False) -> xr.Dataset:
             bands.remove(var)
 
     prev_dtype = str(data[bands[0]].dtype)
-    
+
     to_process = list(set(bands) & set(data.keys()))
 
     attrs = {p: data[p].attrs for p in to_process}
@@ -297,7 +306,7 @@ def harmonize_s2_data(data: Dataset, scale: bool = False) -> xr.Dataset:
 
     for variable in no_change.keys():
         new[variable] = no_change[variable]
-    
+
     for k, v in attrs.items():
         new[k].attrs = v
 

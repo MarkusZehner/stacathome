@@ -92,7 +92,7 @@ def wgs84_centroid_distance(shape1: geom.Geometry, shape2: geom.Geometry) -> flo
     Args:
         shape1 (Geometry): The first shape.
         shape2 (Geometry): The second shape.
-    
+
     Returns:
         float: The distance between the centroids of the two shapes in meters.
     """
@@ -142,7 +142,7 @@ def wgs84_overlap_percentage(shape1: geom.Geometry, shape2: geom.Geometry) -> fl
 
 def wgs84_contains(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool:
     """
-    Check if one geometry fully contains another geometry when interpreted as geodesic polygons on the WGS 84 reference ellipsoid. 
+    Check if one geometry fully contains another geometry when interpreted as geodesic polygons on the WGS 84 reference ellipsoid.
 
     Args:
         geometry1 (Geometry): The first geometry.
@@ -163,7 +163,7 @@ def wgs84_intersects(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool
     Args:
         geometry1 (Geometry): The first geometry.
         geometry2 (Geometry): The second geometry.
-    
+
     Returns:
         bool: True if geometry1 intersects geometry2, False otherwise.
     """

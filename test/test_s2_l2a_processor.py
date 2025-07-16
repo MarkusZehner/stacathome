@@ -1,6 +1,11 @@
 import shapely
 from odc.geo.geobox import GeoBox
-from stacathome.processors.sentinel2_rewrite import Sentinel2L2AProcessor, s2_pc_filter_newest_processing_time, s2_pc_filter_coverage, s2_pc_filter_geometry_coverage
+from stacathome.processors.sentinel2_rewrite import (
+    s2_pc_filter_coverage,
+    s2_pc_filter_geometry_coverage,
+    s2_pc_filter_newest_processing_time,
+    Sentinel2L2AProcessor,
+)
 from stacathome.providers import get_provider
 
 
@@ -34,7 +39,9 @@ class TestSentinel2L2AProcessor:
         geobox = create_test_geobox(shapely.Point(710800, 5901040), resolution=100, size_box=10000, crs='EPSG:32632')
         area_of_interest = geobox.footprint('EPSG:4326', buffer=0, npoints=4)
 
-        geobox_small = create_test_geobox(shapely.Point(740800, 5901040), resolution=100, size_box=100, crs='EPSG:32632')
+        geobox_small = create_test_geobox(
+            shapely.Point(740800, 5901040), resolution=100, size_box=100, crs='EPSG:32632'
+        )
         roi_small = geobox_small.footprint('EPSG:4326', buffer=0, npoints=4)
 
         items = provider.request_items(
@@ -47,7 +54,7 @@ class TestSentinel2L2AProcessor:
         assert len(items) == 72
 
         only_newer_processing = s2_pc_filter_newest_processing_time(items)
-        
+
         assert len(only_newer_processing) == 48
 
         coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, area_of_interest)
@@ -131,9 +138,8 @@ class TestSentinel2L2AProcessor:
             'S2B_MSIL2A_20230710T101609_R065_T32UQD_20230710T183605',
             'S2B_MSIL2A_20230710T101609_R065_T32UPE_20230710T183605',
             'S2B_MSIL2A_20230710T101609_R065_T32UPD_20230710T183056',
-            ]
-        
-        
+        ]
+
         filter_processing_time = [
             'S2A_MSIL2A_20230728T102601_R108_T33UUV_20241020T040431',
             'S2A_MSIL2A_20230728T102601_R108_T33UUU_20241020T040431',
@@ -183,8 +189,8 @@ class TestSentinel2L2AProcessor:
             'S2B_MSIL2A_20230710T101609_R065_T32UQD_20230710T183605',
             'S2B_MSIL2A_20230710T101609_R065_T32UPE_20230710T183605',
             'S2B_MSIL2A_20230710T101609_R065_T32UPD_20230710T183056',
-            ]
-        
+        ]
+
         filter_processing_time_coverage = [
             'S2A_MSIL2A_20230728T102601_R108_T32UQE_20241020T040431',
             'S2A_MSIL2A_20230725T101601_R065_T32UQE_20241017T005903',
@@ -194,15 +200,14 @@ class TestSentinel2L2AProcessor:
             'S2A_MSIL2A_20230715T101601_R065_T32UQE_20230715T181718',
             'S2B_MSIL2A_20230713T102649_R108_T32UQE_20230720T174210',
             'S2B_MSIL2A_20230710T101609_R065_T32UQE_20230710T183114',
-            ]
+        ]
 
         filter_processing_time_coverage_geoemtry = [
             'S2A_MSIL2A_20230725T101601_R065_T32UQE_20241017T005903',
             'S2B_MSIL2A_20230720T101609_R065_T32UQE_20230720T180206',
             'S2A_MSIL2A_20230715T101601_R065_T32UQE_20230715T181718',
             'S2B_MSIL2A_20230710T101609_R065_T32UQE_20230710T183114',
-            ]
-        
+        ]
 
         assert {i.id for i in items} == set(all_returns)
         assert {i.id for i in only_newer_processing} == set(filter_processing_time)
