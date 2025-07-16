@@ -16,7 +16,6 @@ class Variable:
     description: Optional[str] = None
     unit: Optional[str] = None
     roles: list[str] = field(default_factory=list)
-
     dtype: Optional[str] = None
     preferred_resampling: Optional[str] = None  # possible values: nearest, bilinear, mode
     nodata_value: Optional[int | float] = None
@@ -26,6 +25,13 @@ class Variable:
     center_wavelength: Optional[float] = None
     full_width_half_max: Optional[float] = None
 
+    def to_attributes(self) -> dict[str, str]:
+        attrs = self.asdict()
+        del attrs['name']
+        del attrs['dtype']
+        del attrs['preferred_resampling']
+        return attrs
+
 
 class CollectionMetadata:
 
@@ -33,7 +39,7 @@ class CollectionMetadata:
         self._variables = {var.name: var for var in variables}
 
     @property
-    def variables(self):
+    def variables(self) -> dict[str, Variable]:
         return self._variables
 
     def available_variables(self) -> list[str]:
@@ -45,7 +51,16 @@ class CollectionMetadata:
     def get_variable(self, variable: str) -> Variable | None:
         return self.variables.get(variable)
 
-    def aspystr(self):
+    def preferred_resampling_per_variable(self) -> dict[str, str]:
+        return {name: var.preferred_resampling for name, var in self.variables.items() if var.preferred_resampling}
+
+    def dtype_per_variable(self) -> dict[str, str]:
+        return {name: var.dtype for name, var in self.variables.items() if var.dtype}
+
+    def attributes_per_variable(self) -> dict[str, dict[str,str]]:
+        return {name: var.to_attributes() for name, var in self.variables.items()}
+
+    def aspystr(self) -> str:
         """
         Returns this object as pretty-formated and valid python string.
         This method differs from __repr__ with regards to formattin but is functional equivalent.
@@ -57,10 +72,10 @@ class CollectionMetadata:
         str = f'{self.__class__.__name__}({var_str})'
         return str.replace('=nan', "=float('nan')")  # workaround for https://bugs.python.org/issue1732212
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.aspystr()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         var_str = ','.join(repr(var) for var in self.variables.values())
         str = f'{self.__class__.__name__}({var_str})'
         return str.replace('=nan', "=float('nan')")  # workaround for https://bugs.python.org/issue1732212
@@ -80,17 +95,3 @@ def has_static_metadata(provider_name: str, collection: str) -> bool:
 def get_static_metadata(provider_name: str, collection: str) -> CollectionMetadata | None:
     key = (provider_name, collection)
     return _metadata_registry.get(key)
-
-def get_resampling_per_variable(metadata:CollectionMetadata, target_resolution: float) -> dict[str, str]:
-    return {v.name: "nearest" if (target_resolution <= v.spatial_resolution or
-                        math.isclose(target_resolution, v.spatial_resolution))
-                        else v.preferred_resampling for v in metadata.variables.values()}
-    
-def get_variable_attributes(metadata:CollectionMetadata, variables:list[str] | None = None):
-    attrs = {}
-    for v, attr in metadata.variables.items():
-        if variables and v not in variables:
-            continue
-        attrs[v] = attr.__dict__
-    return attrs
-        

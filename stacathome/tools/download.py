@@ -22,7 +22,7 @@ def print_items(items, geometry):
     strs = []
     for item in items:
         item_geometry = geom.Geometry(item.geometry, crs='EPSG:4326')
-        overlap = stacathome.geo.overlap_percentage(geometry, item_geometry)
+        overlap = stacathome.geo.wgs84_overlap_percentage(geometry, item_geometry)
         s = f"  + {item.id} ({item.datetime}, {overlap*100:.1f}% overlap, {len(item.assets)} assets"
         if 'proj:code' in item.properties:
             s += f', {item.properties["proj:code"]}'

@@ -5,8 +5,7 @@ from odc.geo.geom import Geometry
 
 from stacathome.providers import BaseProvider
 from stacathome.stac import enclosing_geoboxes_per_grid
-from stacathome.metadata import (get_static_metadata, has_static_metadata, 
-                                 get_resampling_per_variable, get_variable_attributes)
+from stacathome.metadata import get_static_metadata
 
 _processor_registry: dict[tuple[str, str], "BaseProcessor"] = {}
 
@@ -44,7 +43,6 @@ class BaseProcessor:
             asset_names = set(entry.assets) & set(variables) if variables else set(entry.assets)
             if not asset_names:
                 continue
-            
             # load the data for the given geobox and asset names
             datasets[str(group_nr)] = self.load_items_geoboxed(
                 provider,
@@ -52,12 +50,11 @@ class BaseProcessor:
                 items=items,
                 variables=asset_names,
             )
-        
+
         for group_nr in datasets.keys():
             datasets[group_nr] = datasets[group_nr].rename({'x': f'x_{group_nr}', 'y': f'y_{group_nr}'})
 
         cube = xr.merge(datasets.values())
-        
         return cube
 
     def load_items_geoboxed(self, provider: BaseProvider,
@@ -76,31 +73,8 @@ class BaseProcessor:
         """
         if not items:
             raise ValueError('No items provided')
-
-        metadata = None
-        dtypes_static = None
-        if has_static_metadata(provider.name, items[0].collection_id):
-            metadata = get_static_metadata(provider.name, items[0].collection_id)
-            dtypes_static = {v.name: v.dtype for v in metadata.variables.values()}
-            
-        attrs = get_variable_attributes(metadata, variables=variables)
-        
-        if not resampling:
-            resampling = get_resampling_per_variable(metadata, geobox.resolution.x) if metadata \
-                else {name: "nearest" for name in variables}
-        if not dtype:
-            # promote dtype if resampling is not 'nearest'
-            if dtypes_static:
-                dtype = {name: dtypes_static[name] if resampling[name] == 'nearest' else 'float32' for name in variables}
-            
-        for v in variables:
-            attrs[v]['resampling'] = resampling[v]
-            attrs[v]['dtype'] = dtype[v]
-        
-        loaded_xr = provider.load_items(items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype)
-        
-        for variable in loaded_xr.keys():
-            loaded_xr[variable].attrs = attrs[variable]
+        variables = set(variables) if variables else None        
+        loaded_xr = provider.load_items(items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype)    
         return loaded_xr
 
     def postprocess_data(self, provider: BaseProvider, roi: Geometry, data: xr.Dataset) -> xr.Dataset:
@@ -110,6 +84,45 @@ class BaseProcessor:
         :return: Post-processed data.
         """
         return data
+
+
+class SimpleProcessor(BaseProcessor):
+    """
+    Simple processor that looks up preferred resampling and dtype from static metadata, if available.
+    Also adds metadata as attributes to the downloaded dataset.
+    """
+    def load_items_geoboxed(self, provider: BaseProvider,
+                            geobox: GeoBox,
+                            items: pystac.ItemCollection,
+                            variables: list[str] | None = None,
+                            resampling:dict[str, str] | None = None,
+                            dtype: dict[str, float] | None = None,
+                            ) -> xr.Dataset:
+        if not items:
+            raise ValueError('No items provided')
+
+        collection =  items[0].collection_id
+        metadata = get_static_metadata(provider.name, collection)
+            
+        resampling = metadata.preferred_resampling_per_variable() if not resampling and metadata else {}
+        dtype = metadata.dtype_per_variable() if not dtype and metadata else {}
+        
+        xr_dataset = super().load_items_geoboxed(
+            provider=provider, 
+            geobox=geobox, 
+            items=items, 
+            variables=variables,
+            resampling=resampling,
+            dtype=dtype,
+        )
+
+        attrs_per_var = metadata.attributes_per_variable()
+        for variable_name in xr_dataset.keys():
+            var_attrs = attrs_per_var.get(variable_name, {})
+            var_attrs['resampling'] = resampling.get('variable_name', 'nearest')
+            xr_dataset[xr_dataset].attrs.update(var_attrs)
+    
+        return xr_dataset
 
 
 def register_default_processor(provider_name: str, collection: str, processor: BaseProcessor):

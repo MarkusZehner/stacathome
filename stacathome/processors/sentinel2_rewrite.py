@@ -12,7 +12,7 @@ from xarray import Dataset
 
 from stacathome.providers import BaseProvider
 import stacathome.geo as geo
-from .base import BaseProcessor
+from .base import SimpleProcessor
 
 
 class S2Item(pystac.Item):
@@ -156,7 +156,7 @@ def s2_pc_filter_geometry_coverage(items:list , roi: geom.Geometry) -> list:
     return return_list
 
 
-class Sentinel2L2AProcessor(BaseProcessor):
+class Sentinel2L2AProcessor(SimpleProcessor):
 
     def __init__(self, convert_to_f32: bool = False, adjust_baseline: bool = True):
         """
@@ -173,16 +173,10 @@ class Sentinel2L2AProcessor(BaseProcessor):
         Reoders the Items by the tile id, first item(s) corresponding to the tile closest to the roi.
 
         """
-
-
         s2_items = [S2Item(item) for item in items]
-
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
-
         s2_items = s2_pc_filter_coverage(s2_items, roi)
-
         s2_items = s2_pc_filter_geometry_coverage(s2_items, roi)
-
         return pystac.ItemCollection(
             items=s2_items,
             clone_items=False,
