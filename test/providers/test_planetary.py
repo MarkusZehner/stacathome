@@ -18,7 +18,7 @@ def construct_provider():
     return provider
 
 
-class TestSTACProvider:
+class TestPlanetaryComputerProvider:
 
     @pytest.mark.remote
     @pytest.mark.planetary

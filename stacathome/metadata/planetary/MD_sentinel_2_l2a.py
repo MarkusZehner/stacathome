@@ -221,24 +221,24 @@ metadata = CollectionMetadata(
     Variable(
         name='SCL',
         longname='Scene classfication map (SCL)',
-        description=str({
-            "flag_meanings":[
-                "Saturated / Defective", 
-                "Dark Area Pixels", 
-                "Cloud Shadows", 
-                "Vegetation",
-                "Bare Soils",
-                "Water",
-                "Clouds low probability / Unclassified",
-                "Clouds medium probability",
-                "Clouds high probability",
-                "Cirrus",
-                "Snow / Ice"
+        description=str(
+            {
+                "flag_meanings": [
+                    "Saturated / Defective",
+                    "Dark Area Pixels",
+                    "Cloud Shadows",
+                    "Vegetation",
+                    "Bare Soils",
+                    "Water",
+                    "Clouds low probability / Unclassified",
+                    "Clouds medium probability",
+                    "Clouds high probability",
+                    "Cirrus",
+                    "Snow / Ice",
                 ],
-            "flag_values": [
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
-                ]
-            }),
+                "flag_values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            }
+        ),
         unit=None,
         roles=['data'],
         dtype='uint8',
