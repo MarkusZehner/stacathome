@@ -15,7 +15,7 @@ NEAR_TILE_CORNER = shapely.Point(705800, 5896040)  # EPSG:32632
 NEAR_TILE_CORNER_SHIFT = shapely.Point(705800 + 5000, 5896040 + 5000)  # EPSG:32632
 
 
-def test_geobox(center, crs='EPSG:32632', resolution=10, size=500):
+def example_geobox(center, crs='EPSG:32632', resolution=10, size=500):
     bbox = (
         center.x - size,  # left
         center.y - size,  # bottom
@@ -42,7 +42,7 @@ class TestSentinel2L2AIntegration:
             'S2B_MSIL2A_20230101T102339_R065_T32UPB_20230101T222806',
         ]
 
-        geobox = test_geobox(MPI_BGC_COORDS, resolution=10)
+        geobox = example_geobox(MPI_BGC_COORDS)
         items = search_items_geoboxed(
             provider_name='planetary_computer',
             collection='sentinel-2-l2a',
@@ -89,7 +89,7 @@ class TestSentinel2L2AIntegration:
 
         data_vars = ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11', 'B12', 'B8A']
 
-        geobox = test_geobox(MPI_BGC_COORDS, resolution=10)
+        geobox = example_geobox(MPI_BGC_COORDS)
         items, ds = load_geoboxed(
             provider_name='planetary_computer',
             collection='sentinel-2-l2a',
