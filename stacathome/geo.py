@@ -1,13 +1,43 @@
-from functools import partial
-
-import numpy as np
 import odc.geo.geom as geom
 import pyproj
-import pystac
 import shapely
+from odc.geo.geobox import GeoBox
 
 
 _WGS84_GEOD = pyproj.Geod(ellps='WGS84')
+
+
+def is_point(geometry: geom.Geometry) -> bool:
+    """
+    Determines whether the provided geometry is a Point.
+
+    Returns:
+        bool: True if the geometry is a Point, False otherwise.
+    """
+    return geometry.geom_type == 'Point'
+
+
+def get_xy(point: geom.Geometry) -> tuple[float, float]:
+    """
+    Extracts the x and y coordinates from a given geometry point.
+
+    Args:
+        point (geom.Geometry): A geometry object containing a point.
+
+    Returns:
+        tuple[float, float]: A tuple containing the x and y coordinates of the point, nans if not a point.
+    """
+    return shapely.get_x(point.geom), shapely.get_y(point.geom)
+
+
+def difference_vector(point1: geom.Geometry, point2: geom.Geometry) -> tuple[float, float]:
+    """
+    Vector between point1 and point2 expressed in the CRS of point1.‚
+    """
+    point2 = point2.to_crs(point1.crs)
+    x1, y1 = get_xy(point1)
+    x2, y2 = get_xy(point2)
+    return x1 - x2, y1 - y2
 
 
 def to_equal_area(geometry: geom.Geometry, resolution=None) -> geom.Geometry:
@@ -60,13 +90,13 @@ def wgs84_geodesic_distance(point1: geom.Geometry, point2: geom.Geometry) -> flo
     Returns:
         float: The distance between the two points in meters.
     """
-    if point1.geom_type != 'Point' or point2.geom_type != 'Point':
+    if not is_point(point1) or not is_point(point2):
         raise ValueError(f"Only point geometries are accepted. Got: '{point1.geom_typ}' and '{point2.geom_typ}'")
     point1 = to_wgs84(point1)
     point2 = to_wgs84(point2)
-    xx = (shapely.get_x(point1.geom), shapely.get_x(point2.geom))
-    yy = (shapely.get_y(point1.geom), shapely.get_y(point2.geom))
-    return _WGS84_GEOD.line_length(xx, yy)
+    x1, y1 = get_xy(point1)
+    x2, y2 = get_xy(point2)
+    return _WGS84_GEOD.line_length((x1, x2), (y1, y2))
 
 
 def wgs84_geodesic_area(geometry: geom.Geometry) -> float:
@@ -170,3 +200,31 @@ def wgs84_intersects(geometry1: geom.Geometry, geometry2: geom.Geometry) -> bool
     geometry1 = to_equal_area(geometry1)
     geometry2 = to_equal_area(geometry2)
     return geometry1.intersects(geometry2)
+
+
+def nearest_pixel_edge(point: geom.Geometry, geobox: GeoBox, return_crs_coords: bool = False) -> tuple[int, int]:
+    if not is_point(point):
+        raise ValueError('Only point geometries are supported')
+
+    x_wld, y_wld = get_xy(point.to_crs(geobox.crs))
+    x_pix, y_pix = geobox.wld2pix(x_wld, y_wld)
+    x_pix, y_pix = round(x_pix), round(y_pix)
+    if return_crs_coords:
+        return geobox.pix2wld(x_pix, y_pix)
+    else:
+        return x_pix, y_pix
+
+
+def closest_geobox_to_point(point: geom.Geometry, geobox: GeoBox, width: int, height: int) -> GeoBox:
+    if not is_point(point):
+        raise ValueError('Only point geometries are supported')
+
+    if width % 2 != 0 or height % 2 != 0:
+        raise ValueError('Only even widths and heights are currently supported')
+
+    x_pix, y_pix = nearest_pixel_edge(point, geobox)
+    pixel_box = geobox.translate_pix(x_pix, y_pix).crop((1, 1))  # (1,1) Geobox with corner at x_pix, y_pix
+    output_box = pixel_box.pad(width // 2, height // 2).crop(
+        (width, height)
+    )  # pad to (width+1, height+1) then crop the extra pixel
+    return output_box
