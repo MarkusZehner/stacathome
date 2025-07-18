@@ -1,8 +1,15 @@
-from .providers import BaseProvider, get_provider, register_provider
-from .processors import BaseProcessor, get_default_processor, has_default_processor, register_default_processor
-from .requests import load, load_geoboxed, search_items, search_items_geoboxed
+from . import geo, stac
 
 __all__ = [
+    'geo',
+    'stac',
+]
+
+from .processors import BaseProcessor, get_default_processor, has_default_processor, register_default_processor
+from .providers import BaseProvider, get_provider, register_provider
+from .requests import load, load_geoboxed, search_items, search_items_geoboxed
+
+__all__ += [
     'search_items',
     'search_items_geoboxed',
     'load',
