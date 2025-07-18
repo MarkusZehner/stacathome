@@ -4,11 +4,12 @@ STAC related functions
 
 from dataclasses import dataclass
 from functools import cached_property, total_ordering
-from typing import Iterable, Sequence
+from typing import Iterable
 
 import odc.geo.geom as geom
 import odc.stac
 import pystac
+import xarray as xr
 from odc.geo.geobox import GeoBox
 
 
@@ -86,6 +87,7 @@ def group_assets_by_grid(item: pystac.Item) -> dict[GeoBox, list[str]]:
     """
     asset_to_gbox = geoboxes_from_assets(item)
     geoboxes = set(asset_to_gbox.values())
+    geoboxes = sorted(geoboxes, key=lambda box: min(box.resolution.map(abs).xy))
     gbox_to_assets = {geobox: [] for geobox in geoboxes}
     for asset, gbox in asset_to_gbox.items():
         gbox_to_assets[gbox].append(asset)
@@ -150,3 +152,31 @@ def enclosing_geoboxes_per_grid(
 
     results = sorted(results)  # sort in ascending gsd
     return results
+
+
+def merge_datasets(datasets: list[xr.Dataset]) -> xr.Dataset:
+    """
+    Merge multiple xarray Datasets into a single Dataset with renamed coordinate variables.
+
+    This function takes a list of xarray Datasets and merges them into one Dataset.
+    If only one Dataset is provided, it is returned as-is.
+    If multiple Datasets are provided, each Dataset's 'x' and 'y' coordinate variables
+    are renamed to ensure uniqueness before merging.
+
+    Args:
+        datasets (list of xr.Dataset): List of xarray Datasets to merge.
+
+    Returns:
+        xr.Dataset: Merged Dataset containing all input Datasets with uniquely renamed coordinates.
+
+    Raises:
+        ValueError: If the input list is empty.
+    """
+    if not datasets:
+        raise ValueError('No datasets provided')
+    if len(datasets) == 1:
+        return datasets[0]
+    renamed_datasets = []
+    for i, ds in enumerate(datasets):
+        renamed_datasets.append(ds.rename({'x': f'x_{i}', 'y': f'y_{i}'}))
+    return xr.merge(renamed_datasets)

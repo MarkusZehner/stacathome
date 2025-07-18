@@ -7,7 +7,7 @@ from odc.geo.geom import Geometry
 
 from stacathome.metadata import get_static_metadata
 from stacathome.providers import BaseProvider
-from stacathome.stac import enclosing_geoboxes_per_grid
+from stacathome.stac import enclosing_geoboxes_per_grid, merge_datasets
 
 
 ProcessorFactory = Callable[[], 'BaseProcessor']
@@ -45,27 +45,19 @@ class BaseProcessor:
         if not items:
             raise ValueError('No items provided')
 
-        enclosing_boxes = enclosing_geoboxes_per_grid(items[0], roi)
-        datasets = {}
-        for group_nr, entry in enumerate(enclosing_boxes):
+        datasets = []
+        for entry in enclosing_geoboxes_per_grid(items[0], roi):
             asset_names = set(entry.assets) & set(variables) if variables else set(entry.assets)
             if not asset_names:
                 continue
-            # load the data for the given geobox and asset names
-            datasets[str(group_nr)] = self.load_items_geoboxed(
+            ds = self.load_items_geoboxed(
                 provider,
                 geobox=entry.enclosing_box,
                 items=items,
                 variables=asset_names,
             )
-
-        # Rename coords if there is more than one resolution
-        if len(enclosing_boxes) > 1:
-            for group_nr in datasets.keys():
-                datasets[group_nr] = datasets[group_nr].rename({'x': f'x_{group_nr}', 'y': f'y_{group_nr}'})
-
-        cube = xr.merge(datasets.values())
-        return cube
+            datasets.append(ds)
+        return merge_datasets(datasets)
 
     def load_items_geoboxed(
         self,
