@@ -47,7 +47,7 @@ class TestSentinel1RTCIntegration:
         # Test correct timestamps
         item_timestamps = [item.datetime.astimezone(datetime.timezone.utc) for item in items]
         item_timestamps = [np.datetime64(dt.replace(tzinfo=None)) for dt in item_timestamps]
-        assert list(ds.time.values) == item_timestamps
+        assert list(ds.time.values) == sorted(item_timestamps)
 
         # Should be fp32
         for var in ds.data_vars:

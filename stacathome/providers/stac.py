@@ -134,6 +134,12 @@ class STACProvider(BaseProvider):
 
         variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
+        
+        for datetime_key in ['start_time', 'datetime']:
+            if items[0].properties.get(datetime_key, None):
+                items = sorted(items, key=lambda x: x.properties[datetime_key])
+                break
+                
         data = odc.stac.load(
             items=items,
             bands=variables,
