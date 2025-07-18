@@ -5,7 +5,6 @@ import earthaccess
 import odc
 import odc.stac
 import pystac
-import shapely
 from odc.geo.geom import Geometry
 
 from .common import BaseProvider, register_provider

@@ -1,5 +1,10 @@
 import pytest
-from stacathome.processors import get_default_processor, register_default_processor, BaseProcessor, has_default_processor
+from stacathome.processors import (
+    BaseProcessor,
+    get_default_processor,
+    has_default_processor,
+    register_default_processor,
+)
 
 
 class FakeProcessor(BaseProcessor):

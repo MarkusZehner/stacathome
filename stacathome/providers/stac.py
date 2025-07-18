@@ -11,7 +11,7 @@ import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
-from stacathome.metadata import CollectionMetadata, get_static_metadata, has_static_metadata, Variable
+from stacathome.metadata import CollectionMetadata, Variable
 from .common import BaseProvider, register_provider
 
 

@@ -1,7 +1,6 @@
-import pytest 
+import pytest
 import shapely
 from odc.geo.geobox import GeoBox
-
 from stacathome.processors.sentinel2 import (
     s2_pc_filter_coverage,
     s2_pc_filter_geometry_coverage,
