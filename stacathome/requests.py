@@ -1,3 +1,4 @@
+from typing import Iterable
 from datetime import datetime
 
 import pystac
@@ -76,6 +77,7 @@ def load(
     roi: shapely.Geometry,
     starttime: datetime,
     endtime: datetime,
+    variables: Iterable[str] = None,
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
@@ -94,7 +96,7 @@ def load(
     if not items:
         raise ValueError('No items left after filtering')
 
-    data = processor.load_items(provider, roi, items)
+    data = processor.load_items(provider, roi, items, variables=variables)
     data = processor.postprocess_data(provider, roi, data)
 
     return items, data
@@ -106,6 +108,7 @@ def load_geoboxed(
     geobox: GeoBox,
     starttime: datetime,
     endtime: datetime,
+    variables: Iterable[str] = None,
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
@@ -126,7 +129,7 @@ def load_geoboxed(
     if not items:
         raise ValueError('No items left after filtering')
 
-    data = processor.load_items_geoboxed(provider, geobox, items)
+    data = processor.load_items_geoboxed(provider, geobox, items, variables=variables)
     data = processor.postprocess_data(provider, roi, data)
 
     return items, data
