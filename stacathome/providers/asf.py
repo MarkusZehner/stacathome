@@ -52,6 +52,13 @@ class ASFProvider(BaseProvider):
         return item_collection
     
     def create_item(self, grouped_granule: dict) -> pystac.Item:
+        """
+        Create a STAC item from a Granule object.
+        Args:
+            granule (dict): The grouped granules of assets to convert into a STAC item.
+        Returns:
+            pystac.Item: The created STAC item.
+        """
         groupID, content = grouped_granule
         item_id = groupID
         g_dict = content[0].__dict__

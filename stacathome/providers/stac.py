@@ -164,8 +164,18 @@ _planetary = partial(
 )
 register_provider('planetary_computer', _planetary)
 
-# get access to cdse via:
+## get access to cdse via:
 # https://documentation.dataspace.copernicus.eu/APIs/S3.html
+
+## to use simply add this to environment before load_items call:
+# import os
+# os.environ["GDAL_HTTP_TCP_KEEPALIVE"] = "YES"
+# os.environ["AWS_S3_ENDPOINT"] = "eodata.dataspace.copernicus.eu"
+# os.environ["AWS_ACCESS_KEY_ID"] = ""  # !
+# os.environ["AWS_SECRET_ACCESS_KEY"] = ""  # !
+# os.environ["AWS_HTTPS"] = "YES"
+# os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
+# os.environ["GDAL_HTTP_UNSAFESSL"] = "YES"
 _cdse = partial(
     STACProvider, url='https://stac.dataspace.copernicus.eu/v1/', sign=None,
 )

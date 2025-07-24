@@ -63,7 +63,7 @@ class EarthAccessProvider(BaseProvider):
         """
         Create a STAC item from a Granule object.
         Args:
-            granule (earthaccess.Granule): The granule to convert into a STAC item.
+            granule (earthaccess.results.Granule): The granule to convert into a STAC item.
         Returns:
             pystac.Item: The created STAC item.
         """
