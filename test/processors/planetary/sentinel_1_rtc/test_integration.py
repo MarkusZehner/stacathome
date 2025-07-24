@@ -20,6 +20,8 @@ class TestSentinel1RTCIntegration:
         expected_ids = [
             'S1A_IW_GRDH_1SDV_20250708T053446_20250708T053511_059988_0773C3_rtc',
             'S1A_IW_GRDH_1SDV_20250704T171559_20250704T171624_059937_077200_rtc',
+            'S1C_IW_GRDH_1SDV_20250702T053350_20250702T053415_003037_rtc',
+            'S1C_IW_GRDH_1SDV_20250705T170644_20250705T170709_003088_rtc',
         ]
 
         expected_vars = {'vv', 'vh'}

@@ -14,6 +14,31 @@ from stacathome.providers import BaseProvider
 from .base import register_default_processor, SimpleProcessor
 
 
+def get_asset_property(item: pystac.Item, property_name: str, asset_name: str = None) -> str | None:
+    if asset_name:
+        asset = item.assets.get(asset_name)
+        if asset is None:
+            raise ValueError(f"Asset '{asset_name}' not found in item.")
+        code = asset.extra_fields.get(property_name)
+        if not code:
+            code = item.properties.get(property_name)
+        if not code:
+            code = item.extra_fields.get(property_name)
+        return code
+    else:
+        code = None
+        for name, asset in item.assets.items():
+            asset_code = get_proj(item, name)
+            if asset_code and code and asset_code != code:
+                raise ValueError("Multiple different projection codes found in item.")
+            elif asset_code:
+                code = asset_code
+        return code
+
+def get_proj(item: pystac.Item, asset_name: str = None):
+     return get_asset_property(item, 'proj:code', asset_name)
+
+
 class S2Item(pystac.Item):
 
     def __init__(self, item, validate: bool = True):
@@ -22,36 +47,12 @@ class S2Item(pystac.Item):
             self._validate()
 
     def _validate(self):
-        if self._is_planetary():
-            self._validate_from_planetary()
-        elif self._is_cdse():
-            self._validate_from_cdse()
-        else:
-            raise ValueError("Unknown source type: Cannot validate item.")
-
-    def _is_planetary(self):
-        return 's2:mgrs_tile' in self._item.properties
-
-    def _is_cdse(self):
-        return 'grid:code' in self._item.properties
-
-    def _validate_from_planetary(self):
         if self._item.geometry is None:
             raise ValueError('Item does not have a geometry.')
-        if 's2:mgrs_tile' not in self._item.properties:
-            raise ValueError("Item does not have 's2:mgrs_tile' property.")
-        if 'proj:code' not in self._item.properties:
+        if not self.mgrs_tile:
+            raise ValueError("Item does not contain a tile-id property.")
+        if not get_proj(self._item):
             raise ValueError("Item does not have 'proj:code' property.")
-
-    def _validate_from_cdse(self):
-        if self._item.geometry is None:
-            raise ValueError('Item does not have a geometry.')
-        if 'grid:code' not in self._item.properties:
-            raise ValueError("Item does not have 'grid:code' property.")
-        if not self._item.assets.get('AOT_10m'):
-            raise ValueError("Item is missing 'AOT_10m' asset.")
-        if 'proj:code' not in self._item.assets['AOT_10m'].extra_fields:
-            raise ValueError("Asset 'AOT_10m' does not have 'proj:code'.")
 
     def __getattr__(self, item):
         """
@@ -60,34 +61,22 @@ class S2Item(pystac.Item):
         return getattr(self._item, item)
 
     @property
-    def properties_s2(self):
-        """
-        Get the Sentinel-2 specific properties from the item.
-        """
-        if self._is_planetary():
-            return {k: v for k, v in self._item.properties.items() if k.startswith('s2:')}
-        else:
-            return self._item.properties
-
-    @property
     def proj_code(self):
         """
         Get the projection code from the item properties.
         """
-        if self._is_planetary():
-            return self._item.properties['proj:code']
-        else:
-            return self._item.assets['AOT_10m'].extra_fields['proj:code']
+        return get_proj(self._item)
 
     @property
     def mgrs_tile(self):
         """
         Get the MGRS tile identifier from the item properties.
         """
-        if self._is_planetary():
-            return self._item.properties['s2:mgrs_tile']
-        else:
-            return self._item.properties['grid:code']
+        mgrs_tile = get_asset_property(self._item, 's2:mgrs_tile')
+
+        if not mgrs_tile:
+            mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[1]
+        return mgrs_tile
 
     @cached_property
     def geometry_shapely(self):
@@ -121,7 +110,8 @@ class S2Item(pystac.Item):
 def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     """
     Returns the newest veriosn of S2 L2A items using the processing time from the ID.
-    The ID is expected to be in the format 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
+    The ID is expected to be in the format 'S2A_MSIL2A_20220101T000000_R123_T123456_20220101T000000' (note 'NXXXX' is missing) 
+    or 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
     """
     filtered = {}
     for item in items:
@@ -134,9 +124,9 @@ def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
             mission_id, prod_lvl, datatake_sensing_start_time, _, rel_orbit, mgrs_tile, process_time = native_id
         else:
             raise ValueError(f'Id if S2Item does not match known providers with {item.id}')
-        identifyer = '_'.join([mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile])
-        if identifyer not in filtered or process_time > filtered[identifyer][0]:
-            filtered[identifyer] = (process_time, item)
+        identifier = '_'.join([mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile])
+        if identifier not in filtered or process_time > filtered[identifier][0]:
+            filtered[identifier] = (process_time, item)
     return [v[1] for v in filtered.values()]
 
 
