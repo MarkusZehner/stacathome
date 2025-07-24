@@ -4,10 +4,10 @@ from typing import Callable
 
 import odc
 import odc.stac
+from odc.geo.geom import Geometry
 import planetary_computer
 import pystac
 import pystac_client
-import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
@@ -111,7 +111,7 @@ class STACProvider(BaseProvider):
         collection: str,
         starttime: datetime,
         endtime: datetime,
-        roi: shapely.Geometry = None,
+        roi: Geometry = None,
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
@@ -134,11 +134,16 @@ class STACProvider(BaseProvider):
 
         variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
-        
-        for datetime_key in ['start_time', 'datetime']:
-            if items[0].properties.get(datetime_key, None):
-                items = sorted(items, key=lambda x: x.properties[datetime_key])
+
+        sorted_items = False
+        for datetime_key in ['start_time', 'start_datetime', 'datetime']:
+            if all(datetime_key in item.properties for item in items):
+                items = sorted(items, key=lambda x: x.properties.get(datetime_key))
+                sorted_items = True
                 break
+
+        if not sorted_items:
+            raise ValueError('Inconsistent start_time/datetime info in items, check the ItemCollection!')
                 
         data = odc.stac.load(
             items=items,
@@ -158,3 +163,10 @@ _planetary = partial(
     STACProvider, url='https://planetarycomputer.microsoft.com/api/stac/v1', sign=planetary_computer.sign
 )
 register_provider('planetary_computer', _planetary)
+
+# get access to cdse via:
+# https://documentation.dataspace.copernicus.eu/APIs/S3.html
+_cdse = partial(
+    STACProvider, url='https://stac.dataspace.copernicus.eu/v1/', sign=None,
+)
+register_provider('cdse', _cdse)

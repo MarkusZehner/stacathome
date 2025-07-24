@@ -22,17 +22,36 @@ class S2Item(pystac.Item):
             self._validate()
 
     def _validate(self):
-        """
-        Validate the item to ensure it has the necessary Sentinel-2 properties.
-        """
+        if self._is_planetary():
+            self._validate_from_planetary()
+        elif self._is_cdse():
+            self._validate_from_cdse()
+        else:
+            raise ValueError("Unknown source type: Cannot validate item.")
+
+    def _is_planetary(self):
+        return 's2:mgrs_tile' in self._item.properties
+
+    def _is_cdse(self):
+        return 'grid:code' in self._item.properties
+
+    def _validate_from_planetary(self):
         if self._item.geometry is None:
             raise ValueError('Item does not have a geometry.')
-
         if 's2:mgrs_tile' not in self._item.properties:
             raise ValueError("Item does not have 's2:mgrs_tile' property.")
-
-        if 'proj:code' not in self._item.properties:
+        if 'proj:code' not in self.item.properties:
             raise ValueError("Item does not have 'proj:code' property.")
+
+    def _validate_from_cdse(self):
+        if self._item.geometry is None:
+            raise ValueError('Item does not have a geometry.')
+        if 'grid:code' not in self._item.properties:
+            raise ValueError("Item does not have 'grid:code' property.")
+        if not self._item.assets.get('AOT_10m'):
+            raise ValueError("Item is missing 'AOT_10m' asset.")
+        if 'proj:code' not in self._item.assets['AOT_10m'].extra_fields:
+            raise ValueError("Asset 'AOT_10m' does not have 'proj:code'.")
 
     def __getattr__(self, item):
         """
@@ -45,21 +64,30 @@ class S2Item(pystac.Item):
         """
         Get the Sentinel-2 specific properties from the item.
         """
-        return {k: v for k, v in self._item.properties.items() if k.startswith('s2:')}
+        if self._is_planetary():
+            return {k: v for k, v in self._item.properties.items() if k.startswith('s2:')}
+        else:
+            return self._item.properties
 
     @property
     def proj_code(self):
         """
         Get the projection code from the item properties.
         """
-        return self._item.properties['proj:code']
+        if self._is_planetary():
+            return self._item.properties['proj:code']
+        else:
+            return self._item.assets['AOT_10m'].extra_fields['proj:code']
 
     @property
     def mgrs_tile(self):
         """
         Get the MGRS tile identifier from the item properties.
         """
-        return self._item.properties['s2:mgrs_tile']
+        if self._is_planetary():
+            return self._item.properties['s2:mgrs_tile']
+        else:
+            return self._item.properties['grid:code']
 
     @cached_property
     def geometry_shapely(self):
@@ -98,9 +126,10 @@ def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     filtered = {}
     for item in items:
         native_id = item.id
-        base_name, process_time = native_id.rsplit('_', 1)
-        if base_name not in filtered or process_time > filtered[base_name][0]:
-            filtered[base_name] = (process_time, item)
+        mission_id, prod_lvl, datatake_sensing_start_time, proc_baseline, rel_orbit, mgrs_tile, process_time = native_id.split('_')
+        identifyer = '_'.join([mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile])
+        if identifyer not in filtered or process_time > filtered[identifyer][0]:
+            filtered[identifyer] = (process_time, item)
     return [v[1] for v in filtered.values()]
 
 
@@ -175,7 +204,6 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         Reoders the Items by the tile id, first item(s) corresponding to the tile closest to the roi.
 
         """
-        print('test')
         s2_items = [S2Item(item) for item in items]
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
         s2_items = s2_pc_filter_coverage(s2_items, roi)
@@ -198,24 +226,54 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         return data
 
 
-def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None):
-    raise NotImplementedError
+def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None) -> xr.Dataset:
     if not 'SCL' in data.data_vars:
         raise ValueError('"SCL" variable not in data_vars, which is required by mask_by_scl')
     valid_scl_values = valid_scl_values if valid_scl_values else [4, 5, 6, 7, 11]
 
     scl_mask = xr.where(data.SCL.isin(valid_scl_values), 1, 0)
+
     coords_res = _get_coord_name_and_resolution(data)
+    
+    scl_dims = data["SCL"].dims
+    x_scl = [d for d in scl_dims if d.startswith('x')]
+    y_scl = [d for d in scl_dims if d.startswith('y')]
+
+    if not len(x_scl) == len(y_scl) == 1:
+        raise ValueError('Ambiguous x and y coords in SCL band!')
+    x_scl = x_scl[0]
+    y_scl = y_scl[0]
 
     for res, coord_names in coords_res.items():
-        # need to resample to the present data variables to mask
-        pass
+        x_name = [d for d in coord_names if d.startswith('x')]
+        y_name = [d for d in coord_names if d.startswith('y')]
+        if not len(x_name) == len(y_name) == 1:
+            raise ValueError('Ambiguous x and y coords in SCL band!')
+        x_name = x_name[0]
+        y_name = y_name[0]
 
-        data = xr.where(scl_mask == 1, data, 0)
-    return None
+        res_vars = [var for var in data.data_vars if set(coord_names).issubset(data[var].dims)]
+
+        if not res_vars:
+            continue
+
+        if res is not abs(data[res_vars[0]][x_name].attrs['resolution']):
+            scl_mask_res = scl_mask.interp(
+                {x_scl: data[res_vars[0]][x_name], y_scl: data[res_vars[0]][y_name]},
+                method='nearest'
+            )
+        else:
+            scl_mask_res = scl_mask
+
+        for var in res_vars:
+            if var == 'SCL':
+                continue
+            data[var] = data[var].where(scl_mask_res == 1)
+
+    return data
 
 
-def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = None):
+def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = None) -> xr.Dataset:
     if not indicator_variable:
         coords_res = _get_coord_name_and_resolution(data)
         coarsest_axes = coords_res[max(coords_res)]
