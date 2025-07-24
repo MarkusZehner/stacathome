@@ -17,6 +17,14 @@ from pystac import Item
 from shapely import box, buffer, Point, transform, unary_union
 
 
+def get_nested(d, keys, default=None):
+    for key in keys:
+        d = d.get(key, {})
+        if not d:
+            return default
+    return d or default
+
+
 def smallest_modulo_deviation(r, m):
     r_mod = r % m
     alt = r_mod - m

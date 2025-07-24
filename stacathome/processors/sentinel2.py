@@ -40,7 +40,7 @@ class S2Item(pystac.Item):
             raise ValueError('Item does not have a geometry.')
         if 's2:mgrs_tile' not in self._item.properties:
             raise ValueError("Item does not have 's2:mgrs_tile' property.")
-        if 'proj:code' not in self.item.properties:
+        if 'proj:code' not in self._item.properties:
             raise ValueError("Item does not have 'proj:code' property.")
 
     def _validate_from_cdse(self):
@@ -125,8 +125,15 @@ def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     """
     filtered = {}
     for item in items:
-        native_id = item.id
-        mission_id, prod_lvl, datatake_sensing_start_time, proc_baseline, rel_orbit, mgrs_tile, process_time = native_id.split('_')
+        native_id = item.id.split('_')
+        if len(native_id) == 6:
+            # planetary laundered the Processing Baseline number from its ids
+            mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile, process_time = native_id
+        elif len(native_id) == 7:
+            # CDSE has the Processing Baseline number
+            mission_id, prod_lvl, datatake_sensing_start_time, _, rel_orbit, mgrs_tile, process_time = native_id
+        else:
+            raise ValueError(f'Id if S2Item does not match known providers with {item.id}')
         identifyer = '_'.join([mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile])
         if identifyer not in filtered or process_time > filtered[identifyer][0]:
             filtered[identifyer] = (process_time, item)

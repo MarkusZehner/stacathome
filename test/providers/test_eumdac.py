@@ -4,12 +4,11 @@ import datetime
 from stacathome.providers import EUMDACProvider
 
 
-class TestASFProvider:
+class TestEUMDACProvider:
 
     @pytest.mark.remote
     def test_get_items(self):
         date = datetime.datetime(2021, 2, 1)
-        #roi = shapely.box(11, 51, 11.5, 51.5)
 
         EXPECTED_ITEM_IDS = {
             'MSG4-SEVI-MSG15-0100-NA-20210201115743.291000000Z-NA',

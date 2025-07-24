@@ -5,6 +5,7 @@ import planetary_computer
 import pystac
 import pytest
 import shapely
+from odc.geo.geom import Geometry
 from stacathome.metadata import CollectionMetadata
 from stacathome.providers import STACProvider
 
@@ -51,7 +52,7 @@ class TestPlanetaryComputerProvider:
     def test_get_items_planetary(self):
         start = '2023-01-01'
         end = '2023-01-02'
-        roi = shapely.box(11, 51, 11.5, 51.5)
+        roi = Geometry(shapely.box(11, 51, 11.5, 51.5), crs=4326)
 
         EXPECTED_ITEM_IDS = {
             'S2B_MSIL2A_20230101T102339_R065_T32UPC_20240806T223544',
