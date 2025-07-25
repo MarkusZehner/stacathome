@@ -1,6 +1,7 @@
 import pystac
 import pytest
 import shapely
+from odc.geo.geom import Geometry
 from stacathome.providers import ASFProvider
 
 
@@ -10,7 +11,7 @@ class TestASFProvider:
     def test_get_items(self):
         start = '2023-01-01'
         end = '2023-01-02'
-        roi = shapely.box(11, 51, 11.5, 51.5)
+        roi = Geometry(shapely.box(11, 51, 11.5, 51.5), crs=4326)
 
         EXPECTED_ITEM_IDS = {
             'SP_42291_D_008',

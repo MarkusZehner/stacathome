@@ -158,7 +158,7 @@ class BaseProvider:
         """
         raise NotImplementedError
 
-    def load_granule(self, item: pystac.Item, **kwargs) -> bytes:
+    def load_granule(self, item: pystac.Item, variables:list[str], **kwargs) -> bytes:
         """
         Loads a single granule from the provider into memory.
 
