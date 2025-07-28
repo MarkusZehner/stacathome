@@ -1,6 +1,9 @@
 from collections import namedtuple
 from datetime import datetime
 import re
+from importlib.resources import files
+from pathlib import Path
+import csv
 
 import shapely
 import pystac
@@ -10,14 +13,12 @@ from earthaccess.search import DataCollections
 from odc.stac import load
 from odc.geo.geom import Geometry
 from rio_stac.stac import bbox_to_geom
+from rasterio.env import Env
 
 from ..generic_utils import get_nested
-from ..stac import update_stac_item
+from ..stac import update_stac_item, update_asset_exts
 from .common import BaseProvider, register_provider
 
-from importlib.resources import files
-from pathlib import Path
-import csv
 
 
 def save_list_of_tuples(data, path):
@@ -116,6 +117,7 @@ class EarthAccessProvider(BaseProvider):
 
     def create_item(self, granule: earthaccess.results.DataGranule) -> pystac.Item:
         """
+        # this should be moved out to .stac
         Create a STAC item from a Granule object.
         Args:
             granule (earthaccess.results.Granule): The granule to convert into a STAC item.
@@ -166,7 +168,15 @@ class EarthAccessProvider(BaseProvider):
                 href = entry,
                 ) for entry in granule.data_links()
                 }
-
+        
+        # cookie_file_urs = Path.home() / '.urs_cookies'
+        # if Path.is_file(cookie_file_urs):
+        #     print('cookies exists')
+        #     with Env(GDAL_HTTP_COOKIEFILE=cookie_file_urs):
+        #         for name, entry in assets.items():
+        #             assets[name] = update_asset_exts(entry)
+            
+            
         item = pystac.Item(
             id=item_id,
             datetime=item_datetime,
