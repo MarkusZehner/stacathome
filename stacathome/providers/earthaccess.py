@@ -137,7 +137,6 @@ class EarthAccessProvider(BaseProvider):
             item_datetime = datetime.fromisoformat(item_datetime.replace("Z", "+00:00"))
 
         if not item_start_datetime or not item_end_datetime:
-            print(item_start_datetime, item_end_datetime)
             print('item differs in datetime, implement for: ', get_nested(granule, ['umm', 'TemporalExtent']))
             
         item_bbox = None

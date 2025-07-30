@@ -75,7 +75,7 @@ class S2Item(pystac.Item):
         mgrs_tile = get_asset_property(self._item, 's2:mgrs_tile')
 
         if not mgrs_tile:
-            mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[1]
+            mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[-1]
         return mgrs_tile
 
     @cached_property
