@@ -19,24 +19,25 @@ def get_asset_property(item: pystac.Item, property_name: str, asset_name: str = 
         asset = item.assets.get(asset_name)
         if asset is None:
             raise ValueError(f"Asset '{asset_name}' not found in item.")
-        code = asset.extra_fields.get(property_name)
-        if not code:
-            code = item.properties.get(property_name)
-        if not code:
-            code = item.extra_fields.get(property_name)
-        return code
+        item_property = asset.extra_fields.get(property_name)
+        if not item_property:
+            item_property = item.properties.get(property_name)
+        if not item_property:
+            item_property = item.extra_fields.get(property_name)
+        return item_property
     else:
-        code = None
+        item_property = None
         for name, asset in item.assets.items():
-            asset_code = get_proj(item, name)
-            if asset_code and code and asset_code != code:
-                raise ValueError("Multiple different projection codes found in item.")
-            elif asset_code:
-                code = asset_code
-        return code
+            asset_property = get_property(item, property_name, name)
+            if asset_property and item_property and asset_property != item_property:
+                raise ValueError("Conflicting properties found in item over assets.")
+            elif asset_property:
+                item_property = asset_property
+        return item_property
 
-def get_proj(item: pystac.Item, asset_name: str = None):
-     return get_asset_property(item, 'proj:code', asset_name)
+
+def get_property(item: pystac.Item, property_name:str, asset_name: str = None, ):
+     return get_asset_property(item, property_name, asset_name)
 
 
 class S2Item(pystac.Item):
@@ -51,7 +52,7 @@ class S2Item(pystac.Item):
             raise ValueError('Item does not have a geometry.')
         if not self.mgrs_tile:
             raise ValueError("Item does not contain a tile-id property.")
-        if not get_proj(self._item):
+        if not get_property(self._item, 'proj:code'):
             raise ValueError("Item does not have 'proj:code' property.")
 
     def __getattr__(self, item):
@@ -65,7 +66,7 @@ class S2Item(pystac.Item):
         """
         Get the projection code from the item properties.
         """
-        return get_proj(self._item)
+        return get_property(self._item, 'proj:code')
 
     @property
     def mgrs_tile(self):
@@ -73,6 +74,7 @@ class S2Item(pystac.Item):
         Get the MGRS tile identifier from the item properties.
         """
         mgrs_tile = get_asset_property(self._item, 's2:mgrs_tile')
+        print(mgrs_tile)
 
         if not mgrs_tile:
             mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[-1]
@@ -109,8 +111,9 @@ class S2Item(pystac.Item):
 
 def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     """
-    Returns the newest veriosn of S2 L2A items using the processing time from the ID.
-    The ID is expected to be in the format 'S2A_MSIL2A_20220101T000000_R123_T123456_20220101T000000' (note 'NXXXX' is missing) 
+    Returns the newest version of S2 L2A items using the processing time from the ID.
+    The ID is expected to be in the format 
+    'S2A_MSIL2A_20220101T000000_R123_T123456_20220101T000000' (note 'NXXXX' is missing) 
     or 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
     """
     filtered = {}
@@ -144,8 +147,12 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
     return_items = None
 
     for v in mgrs_tiles.values():
-        bbox = v[0].bbox_odc_geometry
         proj = v[0].proj_code
+        print(proj)
+        for vv in v:
+            bbox = vv.bbox_odc_geometry
+            if bbox.to_crs(proj).area > 12000000000:
+                break
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
         if (
