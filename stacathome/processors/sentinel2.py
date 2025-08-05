@@ -146,10 +146,14 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
 
     for v in mgrs_tiles.values():
         proj = v[0].proj_code
+        _area = 0
         for vv in v:
-            bbox = vv.bbox_odc_geometry
-            if bbox.to_crs(proj).area > 12000000000:
+            current_area = vv.bbox_odc_geometry.to_crs(proj).area
+            if current_area > 12000000000 or _area < current_area:
+                _area = current_area
+                bbox = vv.bbox_odc_geometry
                 break
+            
         centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
 
         if (
