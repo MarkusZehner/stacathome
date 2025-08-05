@@ -74,8 +74,6 @@ class S2Item(pystac.Item):
         Get the MGRS tile identifier from the item properties.
         """
         mgrs_tile = get_asset_property(self._item, 's2:mgrs_tile')
-        print(mgrs_tile)
-
         if not mgrs_tile:
             mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[-1]
         return mgrs_tile
@@ -148,7 +146,6 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
 
     for v in mgrs_tiles.values():
         proj = v[0].proj_code
-        print(proj)
         for vv in v:
             bbox = vv.bbox_odc_geometry
             if bbox.to_crs(proj).area > 12000000000:

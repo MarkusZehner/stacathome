@@ -132,11 +132,11 @@ class EarthAccessProvider(BaseProvider):
             item_start_datetime = datetime.fromisoformat(item_start_datetime.replace("Z", "+00:00"))
         if item_end_datetime:
             item_end_datetime = datetime.fromisoformat(item_end_datetime.replace("Z", "+00:00"))
-        item_datetime = None
+        item_datetime = get_nested(granule, ['umm', 'TemporalExtent', 'SingleDateTime'])
         if item_datetime:
             item_datetime = datetime.fromisoformat(item_datetime.replace("Z", "+00:00"))
 
-        if not item_start_datetime or not item_end_datetime:
+        if (not item_start_datetime and not item_end_datetime) and not item_datetime:
             print('item differs in datetime, implement for: ', get_nested(granule, ['umm', 'TemporalExtent']))
             
         item_bbox = None
@@ -166,7 +166,15 @@ class EarthAccessProvider(BaseProvider):
             pystac.Asset(
                 href = entry,
                 ) for entry in granule.data_links()
+            }
+        
+        if len(assets) < len(granule.data_links()):
+            assets = {Path(entry).name:
+                pystac.Asset(
+                    href = entry,
+                    ) for entry in granule.data_links()
                 }
+            
         
         # cookie_file_urs = Path.home() / '.urs_cookies'
         # if Path.is_file(cookie_file_urs):

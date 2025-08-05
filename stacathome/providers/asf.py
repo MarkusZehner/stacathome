@@ -1,5 +1,6 @@
 from datetime import datetime
 from collections import defaultdict
+from pathlib import Path
 
 import asf_search
 import odc
@@ -8,6 +9,7 @@ import pystac
 import shapely
 
 from ..generic_utils import get_nested
+from ..stac import update_stac_item
 from .common import BaseProvider, register_provider
 
 
@@ -45,6 +47,8 @@ class ASFProvider(BaseProvider):
         grouped = defaultdict(list)
         for granule in granules:
             group_id = getattr(granule, 'properties', {}).get('groupID')
+            if not group_id: 
+                group_id = getattr(granule, 'properties', {}).get('fileID')
             grouped[group_id].append(granule)
         items = [self.create_item(granule) for granule in grouped.items()]
         item_collection = pystac.item_collection.ItemCollection(items, clone_items=False)
@@ -101,13 +105,32 @@ class ASFProvider(BaseProvider):
             assets=assets
         )
         
-        item.validate()
+        #item.validate()
 
         return item
 
     @staticmethod
-    def download_from_asf(urls, path, **kwargs):
-        asf_search.download.download_urls(urls, path=path, **kwargs)
+    def download_urls(urls, out_dir, threads, **kwargs):
+        asf_search.download.download_urls(urls, path=out_dir, processes=threads, **kwargs)
+
+    def load_granule(self, item: pystac.Item, variables:list[str]|None=None,
+                     out_dir:str | None = None, threads:int = 1, **kwargs) -> bytes:
+        if variables:
+            urls = [asset.href for name, asset in item.get_assets().items() if name in variables]
+        else:    
+            urls = [asset.href for asset in item.get_assets().values()]
+        if not out_dir:
+            out_dir = ''
+
+        self.download_urls(urls, out_dir, threads, **kwargs)
+        local_files = [out_dir + Path(url).name for url in urls]
+        for i, lf in enumerate(local_files):
+            p = Path(lf)
+            if not p.is_absolute():
+                local_files[i] = str(p.resolve())
+        
+        item = update_stac_item(item, urls, local_files)
+        return item
 
     def create_cube(self, parameters):
         data = odc.stac.load(**parameters)

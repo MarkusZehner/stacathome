@@ -18,10 +18,15 @@ class TestSentinel1RTCIntegration:
     @pytest.mark.planetary
     def test_load_items_nodefault(self):
         expected_ids = [
-            'S1A_IW_GRDH_1SDV_20250708T053446_20250708T053511_059988_0773C3_rtc',
-            'S1A_IW_GRDH_1SDV_20250704T171559_20250704T171624_059937_077200_rtc',
             'S1C_IW_GRDH_1SDV_20250702T053350_20250702T053415_003037_rtc',
+            'S1A_IW_GRDH_1SDV_20250704T171559_20250704T171624_059937_077200_rtc',
             'S1C_IW_GRDH_1SDV_20250705T170644_20250705T170709_003088_rtc',
+            'S1A_IW_GRDH_1SDV_20250708T053446_20250708T053511_059988_0773C3_rtc',
+            'S1C_IW_GRDH_1SDV_20250710T171451_20250710T171516_003161_rtc',
+            'S1A_IW_GRDH_1SDV_20250711T170803_20250711T170828_060039_rtc',
+            'S1C_IW_GRDH_1SDV_20250714T053351_20250714T053416_003212_rtc',
+            'S1C_IW_GRDH_1SDV_20250717T170644_20250717T170709_003263_rtc',
+            'S1A_IW_GRDH_1SDV_20250716T171558_20250716T171623_060112_rtc',
         ]
 
         expected_vars = {'vv', 'vh'}
@@ -35,6 +40,7 @@ class TestSentinel1RTCIntegration:
             endtime='2025-07-20',
             no_default_processor=True,
         )
+        print({item.id for item in items})
         assert isinstance(items, pystac.ItemCollection)
         assert isinstance(ds, xr.Dataset)
         assert {item.id for item in items} == set(expected_ids)
