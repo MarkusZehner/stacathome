@@ -6,15 +6,15 @@ import numpy as np
 import odc.geo.geom as geom
 import pystac
 import shapely
-import xarray as xr
 from shapely import box
+import xarray as xr
 
 import stacathome.geo as geo
 from stacathome.providers import BaseProvider
 from .base import register_default_processor, SimpleProcessor
 
 
-def get_asset_property(item: pystac.Item, property_name: str, asset_name: str = None) -> str | None:
+def get_property(item: pystac.Item, property_name: str, asset_name: str = None) -> str | None:
     if asset_name:
         asset = item.assets.get(asset_name)
         if asset is None:
@@ -36,8 +36,8 @@ def get_asset_property(item: pystac.Item, property_name: str, asset_name: str = 
         return item_property
 
 
-def get_property(item: pystac.Item, property_name:str, asset_name: str = None, ):
-     return get_asset_property(item, property_name, asset_name)
+# def get_property(item: pystac.Item, property_name:str, asset_name: str = None, ):
+#      return get_asset_property(item, property_name, asset_name)
 
 
 class S2Item(pystac.Item):
@@ -73,9 +73,9 @@ class S2Item(pystac.Item):
         """
         Get the MGRS tile identifier from the item properties.
         """
-        mgrs_tile = get_asset_property(self._item, 's2:mgrs_tile')
+        mgrs_tile = get_property(self._item, 's2:mgrs_tile')
         if not mgrs_tile:
-            mgrs_tile = get_asset_property(self._item, 'grid:code').split('-')[-1]
+            mgrs_tile = get_property(self._item, 'grid:code').split('-')[-1]
         return mgrs_tile
 
     @cached_property
