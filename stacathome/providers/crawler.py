@@ -57,14 +57,18 @@ class LSASAFCrawler():
         if not auth and not self.auth:
             raise ValueError('provide auth for datalsasaf')
         auth = auth if auth else self.auth
-
         out_dir=out_dir if out_dir else ''
-        response = requests.get(url, auth=auth, timeout=60)
-
         basename = Path(url).name
-
+        
+        out_path = Path(out_dir) / basename
+        if out_path.exists():
+            print(f'File {basename} exists at {out_dir}!')
+            return
+        
+        response = requests.get(url, auth=auth, timeout=60)
+        
         if response.status_code == 200:
-            with open(Path(out_dir) / basename, "wb") as f:
+            with open(out_path, "wb") as f:
                 f.write(response.content)
         else:
             print("Failed:", response.status_code)
