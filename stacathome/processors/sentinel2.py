@@ -1,5 +1,6 @@
 import datetime
-from collections import defaultdict
+from collections import defaultdict, namedtuple
+
 from functools import cached_property
 
 import numpy as np
@@ -136,50 +137,65 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
     Filter Sentinel-2 items based on their coverage of the area of interest.
     Returns a list items required to cover the area of interest.
     """
+    utm_center_easting = 500000
+    criteria_helper = namedtuple(
+        'criteria_helper',
+        ['contains', 
+        'dist_utm_center', 
+        'overlap_percentage', 
+        'tile_id',
+        'geometry_union']
+        )
+    # remove all non overlapping geometries
+    items = [item for item in items if geo.wgs84_intersects(item.geometry_odc_geometry, roi)]
+
+    # group by mgrs
     mgrs_tiles = defaultdict(list)
     for item in items:
         mgrs_tiles[item.mgrs_tile].append(item)
 
-    centroid_distances = {}
-    latitude_distance_from_utm_center = 500000  # not a good candiate if > half of a utm zone
-    return_items = None
-
+    sort_criteria = []
+    # overlaps = {}
+    # utm_center_dist = {}
     for v in mgrs_tiles.values():
         proj = v[0].proj_code
-        _area = 0
-        for vv in v:
-            current_area = vv.bbox_odc_geometry.to_crs(proj).area
-            if current_area > 12000000000 or _area < current_area:
-                _area = current_area
-                bbox = vv.bbox_odc_geometry
-                break
-            
-        centroid_latitude_distance_from_utm_center = abs(bbox.to_crs(proj).centroid.points[0][0] - 500000)
+        
+        v_geometries = geom.unary_union([vv.geometry_odc_geometry for vv in v])
+        # overlaps[v[0].mgrs_tile] = v_geometries.overlaps(roi)
+        # utm_center_dist[v[0].mgrs_tile] = abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting)
+        sort_criteria.append(
+            criteria_helper(
+                geo.wgs84_contains(v_geometries, roi),
+                abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
+                v_geometries.intersection(roi).area/roi.area,
+                v[0].mgrs_tile,
+                v_geometries
+            )
+        )
+        
+    sort_criteria = sorted(sort_criteria)
+    print([s_c for s_c in sort_criteria])
 
-        if (
-            geo.wgs84_contains(bbox, roi)
-            and latitude_distance_from_utm_center > centroid_latitude_distance_from_utm_center
-        ):
-            latitude_distance_from_utm_center = centroid_latitude_distance_from_utm_center
-            return_items = v
+    if sort_criteria[0].contains:
+        return mgrs_tiles[sort_criteria[0].tile_id]
 
-        centroid_distances[v[0].mgrs_tile] = geo.wgs84_centroid_distance(bbox, roi)
+    roi_coverage = 0.
+    iterative_shape = None
+    return_mgrs = []
+    current_iterative_shape = None
+    for crit in sort_criteria:
+        if not iterative_shape:
+            current_iterative_shape = crit.geometry_union
+        else: 
+            current_iterative_shape = geom.unary_union([crit.geometry_union, current_iterative_shape])
+        current_roi_coverage = current_iterative_shape.intersection(roi).area/roi.area
 
-    if return_items is None:
-        centroid_distances = sorted(centroid_distances.items(), key=lambda x: x[1])
-        iterative_shape = None
-        return_items = []
-        for k, _ in centroid_distances:
-            if not iterative_shape:
-                iterative_shape = mgrs_tiles[k][0].bbox_odc_geometry
-            else:
-                iterative_shape = iterative_shape.union(mgrs_tiles[k][0].bbox_odc_geometry)
-
-            return_items.extend(mgrs_tiles[k])
-
-            if geo.wgs84_contains(iterative_shape, roi):
-                return return_items
-    return return_items
+        if current_roi_coverage > roi_coverage:
+            roi_coverage = current_roi_coverage
+            iterative_shape = current_iterative_shape
+            return_mgrs.extend(mgrs_tiles[crit.tile_id])
+    
+    return return_mgrs
 
 
 def s2_pc_filter_geometry_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Item]:
@@ -212,7 +228,7 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         s2_items = [S2Item(item) for item in items]
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
         s2_items = s2_pc_filter_coverage(s2_items, roi)
-        s2_items = s2_pc_filter_geometry_coverage(s2_items, roi)
+        # s2_items = s2_pc_filter_geometry_coverage(s2_items, roi)
         return pystac.ItemCollection(
             items=s2_items,
             clone_items=False,
