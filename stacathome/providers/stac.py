@@ -135,15 +135,16 @@ class STACProvider(BaseProvider):
         variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
 
-        sorted_items = False
-        for datetime_key in ['start_time', 'start_datetime', 'datetime']:
-            if all(datetime_key in item.properties for item in items):
-                items = sorted(items, key=lambda x: x.properties.get(datetime_key))
-                sorted_items = True
-                break
+        # we do not wan to sort before load, as the item order from filter gives preferred projection
+        # sorted_items = False
+        # for datetime_key in ['start_time', 'start_datetime', 'datetime']:
+        #     if all(datetime_key in item.properties for item in items):
+        #         items = sorted(items, key=lambda x: x.properties.get(datetime_key))
+        #         sorted_items = True
+        #         break
 
-        if not sorted_items:
-            raise ValueError('Inconsistent start_time/datetime info in items, check the ItemCollection!')
+        # if not sorted_items:
+        #     raise ValueError('Inconsistent start_time/datetime info in items, check the ItemCollection!')
                 
         data = odc.stac.load(
             items=items,
@@ -151,8 +152,15 @@ class STACProvider(BaseProvider):
             patch_url=self.sign,
             geobox=geobox,
             groupby=groupby,
+            # This is important for the filtering to be used!
+            # By default items are sorted by time, id within each group to make pixel fusing order deterministic. 
+            # Setting this flag to True will instead keep items within each group in the same order as supplied, 
+            # so that one can implement arbitrary priority for pixel overlap cases.
+            preserve_original_order=True,
             **kwargs,
         )
+        # sort data by time
+        data = data.sortby('time')
         return data
 
     def load_granule(self, item: pystac.Item, **kwargs) -> bytes:

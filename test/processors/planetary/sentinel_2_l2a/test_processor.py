@@ -2,7 +2,6 @@ import pytest
 import shapely
 from odc.geo.geobox import GeoBox
 from stacathome.processors.sentinel2 import (
-    get_property,
     s2_pc_filter_coverage,
     s2_pc_filter_geometry_coverage,
     s2_pc_filter_newest_processing_time,
@@ -37,34 +36,6 @@ class TestSentinel2L2AProcessor:
     @pytest.mark.remote
     @pytest.mark.planetary
     def test_filtering(self):
-        provider = get_provider('planetary_computer')
-        # processor = Sentinel2L2AProcessor()
-
-        geobox = create_test_geobox(shapely.Point(710800, 5901040), resolution=100, size_box=10000, crs='EPSG:32632')
-        area_of_interest = geobox.footprint('EPSG:4326', buffer=0, npoints=4)
-
-        geobox_small = create_test_geobox(
-            shapely.Point(740800, 5901040), resolution=100, size_box=100, crs='EPSG:32632'
-        )
-        roi_small = geobox_small.footprint('EPSG:4326', buffer=0, npoints=4)
-
-        items = provider.request_items(
-            collection='sentinel-2-l2a',
-            starttime='2023-07-10',
-            endtime='2023-07-30',
-            roi=area_of_interest,
-        )
-        s2_items = [S2Item(item) for item in items]
-        assert len(items) == 72
-
-        only_newer_processing = s2_pc_filter_newest_processing_time(s2_items)
-        assert len(only_newer_processing) == 48
-
-        coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, roi_small)
-        assert len(coverage_filtered_items) == 8
-
-        geometry_filtered_items = s2_pc_filter_geometry_coverage(coverage_filtered_items, roi_small)
-        assert len(geometry_filtered_items) == 4
 
         all_returns = {
             'S2A_MSIL2A_20230728T102601_R108_T33UUV_20241020T040431',
@@ -192,28 +163,57 @@ class TestSentinel2L2AProcessor:
             'S2B_MSIL2A_20230710T101609_R065_T32UPD_20230710T183056',
         }
 
-        filter_processing_time_coverage = {
+        filter_processing_coverage = {
             'S2A_MSIL2A_20230715T101601_R065_T33UUV_20230715T181521',
-            'S2A_MSIL2A_20230718T102601_R108_T33UUV_20241019T041854',
             'S2A_MSIL2A_20230725T101601_R065_T33UUV_20241017T005903',
-            'S2A_MSIL2A_20230728T102601_R108_T33UUV_20241020T040431',
             'S2B_MSIL2A_20230710T101609_R065_T33UUV_20230710T162038',
-            'S2B_MSIL2A_20230713T102649_R108_T33UUV_20230720T173402',
             'S2B_MSIL2A_20230720T101609_R065_T33UUV_20230720T173415',
-            'S2B_MSIL2A_20230723T102609_R108_T33UUV_20241020T144323',
             }
 
-        filter_processing_time_coverage_geometry = {
-            'S2A_MSIL2A_20230715T101601_R065_T33UUV_20230715T181521',
-            'S2A_MSIL2A_20230725T101601_R065_T33UUV_20241017T005903',
-            'S2B_MSIL2A_20230710T101609_R065_T33UUV_20230710T162038',
-            'S2B_MSIL2A_20230720T101609_R065_T33UUV_20230720T173415',
+        filter_processing_larger_coverage = {
+            'S2A_MSIL2A_20230725T101601_R065_T33UUU_20241017T005903',
+            'S2B_MSIL2A_20230710T101609_R065_T33UUU_20230710T183102',
+            'S2B_MSIL2A_20230720T101609_R065_T33UUU_20230720T180159',
+            'S2A_MSIL2A_20230715T101601_R065_T33UUU_20230715T181716',
+            'S2A_MSIL2A_20230728T102601_R108_T33UUU_20241020T040431',
+            'S2A_MSIL2A_20230718T102601_R108_T33UUU_20241019T041854',
+            'S2B_MSIL2A_20230723T102609_R108_T33UUU_20241020T144323',
+            'S2B_MSIL2A_20230713T102649_R108_T33UUU_20230720T173631',
             }
+    
+        provider = get_provider('planetary_computer')
+        # processor = Sentinel2L2AProcessor()
+
+        geobox = create_test_geobox(shapely.Point(710800, 5901040), resolution=100, size_box=10000, crs='EPSG:32632')
+        area_of_interest = geobox.footprint('EPSG:4326', buffer=0, npoints=4)
+
+        geobox_small = create_test_geobox(
+            shapely.Point(740800, 5901040), resolution=100, size_box=100, crs='EPSG:32632'
+        )
+        roi_small = geobox_small.footprint('EPSG:4326', buffer=0, npoints=4)
+
+        items = provider.request_items(
+            collection='sentinel-2-l2a',
+            starttime='2023-07-10',
+            endtime='2023-07-30',
+            roi=area_of_interest,
+        )
+        s2_items = [S2Item(item) for item in items]
+        assert len(items) == len(all_returns)
+
+        only_newer_processing = s2_pc_filter_newest_processing_time(s2_items)
+        assert len(only_newer_processing) == len(filter_processing_time)
+
+        coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, roi_small)
+        assert len(coverage_filtered_items) == len(filter_processing_coverage)
+
+        coverage_filtered_items_large = s2_pc_filter_coverage(only_newer_processing, area_of_interest)
+        assert len(coverage_filtered_items_large) == len(filter_processing_larger_coverage)
 
         assert {i.id for i in items} == all_returns
         assert {i.id for i in only_newer_processing} == filter_processing_time
-        assert {i.id for i in coverage_filtered_items} == filter_processing_time_coverage
-        assert {i.id for i in geometry_filtered_items} == filter_processing_time_coverage_geometry
+        assert {i.id for i in coverage_filtered_items} == filter_processing_coverage
+        assert {i.id for i in coverage_filtered_items_large} == filter_processing_larger_coverage
 
-        assert  geometry_filtered_items[0].proj_code == 'EPSG:32633'
-        assert  geometry_filtered_items[0].mgrs_tile == '33UUV'
+        assert  coverage_filtered_items[0].proj_code == 'EPSG:32633'
+        assert  coverage_filtered_items[0].mgrs_tile == '33UUV'
