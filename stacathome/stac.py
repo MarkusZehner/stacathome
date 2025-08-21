@@ -27,16 +27,14 @@ def update_asset_exts(asset):
         proj_info_set = get_projection_info(src_dst).items()
         proj_info = {
             f"proj:{name}": value
-            for name, value in proj_info_set if name in 
-            ['epsg', 'code', 'bbox', 'shape', 'transform']
+            for name, value in proj_info_set
+            if name in ['epsg', 'code', 'bbox', 'shape', 'transform']
         }
         if 'proj:epsg' in proj_info and not 'proj:code' in proj_info:
             proj_info['proj:code'] = proj_info['proj:epsg']
             del proj_info['proj:epsg']
 
-        raster_info = {
-            "raster:bands": get_raster_info(src_dst, max_size=1024)
-        }
+        raster_info = {"raster:bands": get_raster_info(src_dst, max_size=1024)}
         proj_ext.epsg = proj_info['proj:code']
         proj_ext.bbox = proj_info['proj:bbox']
         proj_ext.shape = proj_info['proj:shape']
@@ -45,7 +43,7 @@ def update_asset_exts(asset):
     return asset
 
 
-def update_stac_item(item:pystac.Item, urls:list[str], local_files:list[str]):
+def update_stac_item(item: pystac.Item, urls: list[str], local_files: list[str]):
     if len(urls) != len(local_files):
         raise ValueError('Number of urls and local files does not match!')
     url_to_local = dict(zip(urls, local_files))
@@ -54,7 +52,7 @@ def update_stac_item(item:pystac.Item, urls:list[str], local_files:list[str]):
     for _, asset in item.assets.items():
         href = asset.href
         if href in url_to_local:
-            setattr(asset,'href', url_to_local[href])
+            setattr(asset, 'href', url_to_local[href])
             asset.extra_fields['loaded_from'] = href
             asset = update_asset_exts(asset)
     return item

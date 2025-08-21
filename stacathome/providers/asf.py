@@ -13,7 +13,6 @@ from ..stac import update_stac_item
 from .common import BaseProvider, register_provider
 
 
-
 class ASFProvider(BaseProvider):
 
     def __init__(self, provider_name: str):
@@ -42,19 +41,19 @@ class ASFProvider(BaseProvider):
         )
 
         return self.to_itemcollection(results)
-    
+
     def to_itemcollection(self, granules: list[asf_search.ASFSearchResults]) -> pystac.ItemCollection:
         grouped = defaultdict(list)
         for granule in granules:
             group_id = getattr(granule, 'properties', {}).get('groupID')
-            if not group_id: 
+            if not group_id:
                 group_id = getattr(granule, 'properties', {}).get('fileID')
             grouped[group_id].append(granule)
         items = [self.create_item(granule) for granule in grouped.items()]
         item_collection = pystac.item_collection.ItemCollection(items, clone_items=False)
-        
+
         return item_collection
-    
+
     def create_item(self, grouped_granule: dict) -> pystac.Item:
         """
         Create a STAC item from a Granule object.
@@ -66,7 +65,7 @@ class ASFProvider(BaseProvider):
         groupID, content = grouped_granule
         item_id = groupID
         g_dict = content[0].__dict__
-        
+
         item_start_datetime = get_nested(g_dict, ['umm', 'TemporalExtent', 'RangeDateTime', 'BeginningDateTime'])
         item_end_datetime = get_nested(g_dict, ['umm', 'TemporalExtent', 'RangeDateTime', 'EndingDateTime'])
         if item_start_datetime:
@@ -82,15 +81,15 @@ class ASFProvider(BaseProvider):
             print('item differs in datetime, implement for: ', get_nested(g_dict, ['umm', 'TemporalExtent']))
 
         item_geometry = g_dict['geometry']
-        item_bbox = list(shapely.from_geojson(str(item_geometry).replace("'",'"')).bounds)
+        item_bbox = list(shapely.from_geojson(str(item_geometry).replace("'", '"')).bounds)
 
         assets = {
-            entry.properties['fileID'].split('_')[-1]:
-            pystac.Asset(
-                href = entry.properties['url'],
-                #roles = ["data"]if entry.properties['url'].endswith(('.h5', '.tiff', '.tif', '.nc')) else ["meta"],
-                ) for entry in content
-                }
+            entry.properties['fileID'].split('_')[-1]: pystac.Asset(
+                href=entry.properties['url'],
+                # roles = ["data"]if entry.properties['url'].endswith(('.h5', '.tiff', '.tif', '.nc')) else ["meta"],
+            )
+            for entry in content
+        }
 
         del g_dict['session']
 
@@ -102,10 +101,10 @@ class ASFProvider(BaseProvider):
             geometry=item_geometry,
             bbox=item_bbox,
             properties={'original_result': g_dict},  # needed for download? -> could be just href
-            assets=assets
+            assets=assets,
         )
-        
-        #item.validate()
+
+        # item.validate()
 
         return item
 
@@ -113,11 +112,17 @@ class ASFProvider(BaseProvider):
     def download_urls(urls, out_dir, threads, **kwargs):
         asf_search.download.download_urls(urls, path=out_dir, processes=threads, **kwargs)
 
-    def load_granule(self, item: pystac.Item, variables:list[str]|None=None,
-                     out_dir:str | None = None, threads:int = 1, **kwargs) -> bytes:
+    def load_granule(
+        self,
+        item: pystac.Item,
+        variables: list[str] | None = None,
+        out_dir: str | None = None,
+        threads: int = 1,
+        **kwargs,
+    ) -> bytes:
         if variables:
             urls = [asset.href for name, asset in item.get_assets().items() if name in variables]
-        else:    
+        else:
             urls = [asset.href for asset in item.get_assets().values()]
         if not out_dir:
             out_dir = ''
@@ -128,7 +133,7 @@ class ASFProvider(BaseProvider):
             p = Path(lf)
             if not p.is_absolute():
                 local_files[i] = str(p.resolve())
-        
+
         item = update_stac_item(item, urls, local_files)
         return item
 

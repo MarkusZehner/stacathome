@@ -24,6 +24,7 @@ install epct for local data tailor:
 micromamba create -p /.../datatailor python=3.9 -c eumetsat epct_restapi epct_webui epct_plugin_gis msg-gdal-driver
 
 '''
+
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -41,6 +42,7 @@ import eumdac.product
 from eumdac.request import get
 from eumdac.errors import EumdacError, eumdac_raise_for_status
 from requests.exceptions import HTTPError
+
 # from odc.stac import load
 from odc.geo.geom import Geometry
 
@@ -73,7 +75,7 @@ class EUMDACProvider(BaseProvider):
         limit: int = None,
         **kwargs,
     ) -> pystac.ItemCollection:
-        
+
         if roi:
             roi = roi.wkt
         datastore = eumdac.DataStore(self.token)
@@ -86,11 +88,11 @@ class EUMDACProvider(BaseProvider):
         )
 
         return self.to_itemcollection(list(products))
-    
+
     def to_itemcollection(self, granules: list[eumdac.product.Product]) -> pystac.ItemCollection:
         items = [self.create_item(granule) for granule in granules]
         item_collection = pystac.item_collection.ItemCollection(items, clone_items=False)
-        
+
         return item_collection
 
     def create_item(self, granule: eumdac.product.Product) -> pystac.Item:
@@ -116,26 +118,25 @@ class EUMDACProvider(BaseProvider):
             item_start_datetime = datetime.fromisoformat(item_start_datetime.replace("Z", "+00:00"))
         if item_end_datetime:
             item_end_datetime = datetime.fromisoformat(item_end_datetime.replace("Z", "+00:00"))
-        
+
         item_geometry = g_dict['_geometry']
         item_bbox = None
         if item_geometry:
-            item_bbox = list(shapely.from_geojson(str(item_geometry).replace("'",'"')).bounds)
-        
+            item_bbox = list(shapely.from_geojson(str(item_geometry).replace("'", '"')).bounds)
+
         assets = {
             'url': pystac.Asset(
-                href = granule.datastore.urls.get(
+                href=granule.datastore.urls.get(
                     "datastore",
                     "download product",
-                    vars={"collection_id": str(granule.collection), "product_id":str(granule)},
-                    ),
-                )
-                }
-        
+                    vars={"collection_id": str(granule.collection), "product_id": str(granule)},
+                ),
+            )
+        }
+
         del g_dict['datastore']
         del g_dict['collection']
-        
-        
+
         item = pystac.Item(
             id=item_id,
             datetime=item_datetime,
@@ -144,9 +145,9 @@ class EUMDACProvider(BaseProvider):
             geometry=item_geometry,
             bbox=item_bbox,
             properties={'original_result': g_dict},  # needed for download? -> could be just href
-            assets=assets
+            assets=assets,
         )
-        
+
         item.validate()
 
         return item
@@ -165,7 +166,7 @@ class EUMDACProvider(BaseProvider):
                     print(f"[{item.id}] Attempt {attempt} failed: {e}")
                     os.remove(destination_file_name)
                     if attempt < max_retries:
-                        wait = 2 ** attempt  # exponential backoff: 2s, 4s, 8s...
+                        wait = 2**attempt  # exponential backoff: 2s, 4s, 8s...
                         print(f"[{item.id}] Retrying in {wait}s...")
                         time.sleep(wait)
                     else:
@@ -209,8 +210,10 @@ def download_item(destination_file_name, item, token):
         with open(destination_file_name, "wb") as out_file:
             shutil.copyfileobj(response.raw, out_file)
 
+
 class ProductError(EumdacError):
     """Errors related to products"""
+
 
 #     def create_cube(self, parameters):
 #         data = load(**parameters)

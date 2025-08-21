@@ -20,7 +20,6 @@ from ..stac import update_stac_item, update_asset_exts
 from .common import BaseProvider, register_provider
 
 
-
 def save_list_of_tuples(data, path):
     data = sorted(data, key=lambda x: x[0])
     with open(path, "w", newline='', encoding='utf-8') as f:
@@ -35,6 +34,7 @@ def load_list_of_tuples(file_name):
         next(reader)  # skip header
         data = [tuple(row) for row in reader]
     return data
+
 
 class EarthAccessProvider(BaseProvider):
     def __init__(self, provider_name: str):
@@ -52,11 +52,9 @@ class EarthAccessProvider(BaseProvider):
         if not collections_with_versions or not nr_of_collections == len(collections_with_versions):
             print('collecting')
             avail_datasets = DataCollections().get_all()
-            collections_with_versions = [
-                (i['umm']['ShortName'], i['umm']['Version']) for i in avail_datasets
-            ]
+            collections_with_versions = [(i['umm']['ShortName'], i['umm']['Version']) for i in avail_datasets]
             save_list_of_tuples(collections_with_versions, path)
-                    
+
         shortname_version = namedtuple('EarthaccessCollections', ['collection', 'version'])
         collections_with_versions = [shortname_version(i[0], i[1]) for i in sorted(set(collections_with_versions))]
         return collections_with_versions
@@ -66,11 +64,11 @@ class EarthAccessProvider(BaseProvider):
         to be used with collection names from available_collections
         '''
         return earthaccess.search_datasets(short_name=collection)
-    
+
     def available_collections(self) -> list[tuple[str, str]]:
         return [item.collection for item in self._available_collections]
 
-    def has_collection_with_version(self, collection:str, newest_only=True):
+    def has_collection_with_version(self, collection: str, newest_only=True):
         '''
         Returns all matching collections with version number.
         '''
@@ -82,7 +80,6 @@ class EarthAccessProvider(BaseProvider):
             if not m.collection in highest or highest.get(m.collection, ('', None))[0] < m.version:
                 highest[m.collection] = (m.version, m)
         return [i[1] for i in highest.values()]
-            
 
     def _request_items(
         self,
@@ -96,10 +93,10 @@ class EarthAccessProvider(BaseProvider):
         # nasa item collections have versions. those are separated by a '.' in other documents after the short_name
         version = kwargs.pop('version', None)
 
-        bounding_box=tuple(roi.boundingbox) if roi else None
+        bounding_box = tuple(roi.boundingbox) if roi else None
         if bounding_box:
             kwargs['bounding_box'] = bounding_box
-            
+
         granules = earthaccess.search_data(
             short_name=collection,
             version=version,
@@ -112,7 +109,7 @@ class EarthAccessProvider(BaseProvider):
     def to_itemcollection(self, granules: list[earthaccess.results.DataGranule]) -> pystac.ItemCollection:
         items = [self.create_item(granule) for granule in granules]
         item_collection = pystac.item_collection.ItemCollection(items, clone_items=False)
-        
+
         return item_collection
 
     def create_item(self, granule: earthaccess.results.DataGranule) -> pystac.Item:
@@ -138,9 +135,9 @@ class EarthAccessProvider(BaseProvider):
 
         if (not item_start_datetime and not item_end_datetime) and not item_datetime:
             print('item differs in datetime, implement for: ', get_nested(granule, ['umm', 'TemporalExtent']))
-            
+
         item_bbox = None
-        item_geometry=None
+        item_geometry = None
         geometry_entry = get_nested(granule, ['umm', 'SpatialExtent', 'HorizontalSpatialDomain', 'Geometry'])
         bounds = geometry_entry.get('BoundingRectangles')
         if bounds:
@@ -151,39 +148,41 @@ class EarthAccessProvider(BaseProvider):
             ymax = bounds['NorthBoundingCoordinate']
             item_bbox = [xmin, ymin, xmax, ymax]
             item_geometry = bbox_to_geom(item_bbox)
-            
+
         gpolygon = geometry_entry.get('GPolygons')
         if gpolygon:
             poly = shapely.Polygon([shapely.Point(*i.values()) for i in gpolygon[0]['Boundary']['Points']])
             item_geometry = shapely.geometry.mapping(poly)
             item_bbox = poly.bounds
-            
+
         if not item_bbox and not item_geometry:
             print(f'item has different geometry field: {geometry_entry.keys()}')
-            
 
-        assets = {Path(entry).name.replace(item_id, '').lstrip('._').split('.')[0]:
-            pystac.Asset(
-                href = entry,
-                ) for entry in granule.data_links()
-            }
-        
+        assets = {
+            Path(entry)
+            .name.replace(item_id, '')
+            .lstrip('._')
+            .split('.')[0]: pystac.Asset(
+                href=entry,
+            )
+            for entry in granule.data_links()
+        }
+
         if len(assets) < len(granule.data_links()):
-            assets = {Path(entry).name:
-                pystac.Asset(
-                    href = entry,
-                    ) for entry in granule.data_links()
-                }
-            
-        
+            assets = {
+                Path(entry).name: pystac.Asset(
+                    href=entry,
+                )
+                for entry in granule.data_links()
+            }
+
         # cookie_file_urs = Path.home() / '.urs_cookies'
         # if Path.is_file(cookie_file_urs):
         #     print('cookies exists')
         #     with Env(GDAL_HTTP_COOKIEFILE=cookie_file_urs):
         #         for name, entry in assets.items():
         #             assets[name] = update_asset_exts(entry)
-            
-            
+
         item = pystac.Item(
             id=item_id,
             datetime=item_datetime,
@@ -192,9 +191,9 @@ class EarthAccessProvider(BaseProvider):
             geometry=item_geometry,
             bbox=item_bbox,
             properties={'original_result': granule},  # needed for download? -> could be just href
-            assets=assets
+            assets=assets,
         )
-        
+
         item.validate()
 
         return item
@@ -202,12 +201,18 @@ class EarthAccessProvider(BaseProvider):
     @staticmethod
     def download_urls(urls, out_dir, threads, **kwargs):
         return earthaccess.download(urls, local_path=out_dir, threads=threads, **kwargs)
-        
-    def load_granule(self, item: pystac.Item, variables:list[str]|None=None,
-                     out_dir:str | None = None, threads:int = 1, **kwargs) -> bytes:
+
+    def load_granule(
+        self,
+        item: pystac.Item,
+        variables: list[str] | None = None,
+        out_dir: str | None = None,
+        threads: int = 1,
+        **kwargs,
+    ) -> bytes:
         if variables:
             urls = [asset.href for name, asset in item.get_assets().items() if name in variables]
-        else:    
+        else:
             urls = [asset.href for asset in item.get_assets().values()]
         if not out_dir:
             out_dir = ''
@@ -217,7 +222,7 @@ class EarthAccessProvider(BaseProvider):
             p = Path(lf)
             if not p.is_absolute():
                 local_files[i] = str(p.resolve())
-        
+
         item = update_stac_item(item, urls, local_files)
         return item
 
