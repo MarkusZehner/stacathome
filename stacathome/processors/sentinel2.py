@@ -111,8 +111,8 @@ class S2Item(pystac.Item):
 def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
     """
     Returns the newest version of S2 L2A items using the processing time from the ID.
-    The ID is expected to be in the format 
-    'S2A_MSIL2A_20220101T000000_R123_T123456_20220101T000000' (note 'NXXXX' is missing) 
+    The ID is expected to be in the format
+    'S2A_MSIL2A_20220101T000000_R123_T123456_20220101T000000' (note 'NXXXX' is missing)
     or 'S2A_MSIL2A_20220101T000000_N0509_R123_T123456_20220101T000000'.
     """
     filtered = {}
@@ -139,13 +139,8 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
     """
     utm_center_easting = 500000
     criteria_helper = namedtuple(
-        'criteria_helper',
-        ['contains', 
-        'dist_utm_center', 
-        'overlap_percentage', 
-        'tile_id',
-        'geometry_union']
-        )
+        'criteria_helper', ['contains', 'dist_utm_center', 'overlap_percentage', 'tile_id', 'geometry_union']
+    )
     # remove all non overlapping geometries
     items = [item for item in items if geo.wgs84_intersects(item.geometry_odc_geometry, roi)]
 
@@ -159,7 +154,7 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
     # utm_center_dist = {}
     for v in mgrs_tiles.values():
         proj = v[0].proj_code
-        
+
         v_geometries = geom.unary_union([vv.geometry_odc_geometry for vv in v])
         # overlaps[v[0].mgrs_tile] = v_geometries.overlaps(roi)
         # utm_center_dist[v[0].mgrs_tile] = abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting)
@@ -167,34 +162,34 @@ def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Ite
             criteria_helper(
                 geo.wgs84_contains(v_geometries, roi),
                 abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
-                v_geometries.intersection(roi).area/roi.area,
+                v_geometries.intersection(roi).area / roi.area,
                 v[0].mgrs_tile,
-                v_geometries
+                v_geometries,
             )
         )
-        
+
     sort_criteria = sorted(sort_criteria)
-    print([s_c for s_c in sort_criteria])
+    # print([s_c for s_c in sort_criteria])
 
     if sort_criteria[0].contains:
         return mgrs_tiles[sort_criteria[0].tile_id]
 
-    roi_coverage = 0.
+    roi_coverage = 0.0
     iterative_shape = None
     return_mgrs = []
     current_iterative_shape = None
     for crit in sort_criteria:
         if not iterative_shape:
             current_iterative_shape = crit.geometry_union
-        else: 
+        else:
             current_iterative_shape = geom.unary_union([crit.geometry_union, current_iterative_shape])
-        current_roi_coverage = current_iterative_shape.intersection(roi).area/roi.area
+        current_roi_coverage = current_iterative_shape.intersection(roi).area / roi.area
 
         if current_roi_coverage > roi_coverage:
             roi_coverage = current_roi_coverage
             iterative_shape = current_iterative_shape
             return_mgrs.extend(mgrs_tiles[crit.tile_id])
-    
+
     return return_mgrs
 
 
@@ -255,7 +250,7 @@ def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None
     scl_mask = xr.where(data.SCL.isin(valid_scl_values), 1, 0)
 
     coords_res = _get_coord_name_and_resolution(data)
-    
+
     scl_dims = data["SCL"].dims
     x_scl = [d for d in scl_dims if d.startswith('x')]
     y_scl = [d for d in scl_dims if d.startswith('y')]
@@ -280,8 +275,7 @@ def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None
 
         if res is not abs(data[res_vars[0]][x_name].attrs['resolution']):
             scl_mask_res = scl_mask.interp(
-                {x_scl: data[res_vars[0]][x_name], y_scl: data[res_vars[0]][y_name]},
-                method='nearest'
+                {x_scl: data[res_vars[0]][x_name], y_scl: data[res_vars[0]][y_name]}, method='nearest'
             )
         else:
             scl_mask_res = scl_mask

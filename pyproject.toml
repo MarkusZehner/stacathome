@@ -47,6 +47,7 @@ dev = [
     'dask',
     'jinja2',
     'matplotlib',
+    'folium',
 ]
 
 [dependency-groups]

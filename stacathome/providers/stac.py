@@ -131,10 +131,7 @@ class STACProvider(BaseProvider):
         return items
 
     def load_items(
-        self, items: pystac.ItemCollection,
-        geobox: GeoBox | None = None,
-        variables: list[str]=None,
-        **kwargs
+        self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables: list[str] = None, **kwargs
     ) -> xr.Dataset:
         if not items:
             raise ValueError('No items provided for loading.')
@@ -152,7 +149,7 @@ class STACProvider(BaseProvider):
 
         # if not sorted_items:
         #     raise ValueError('Inconsistent start_time/datetime info in items, check the ItemCollection!')
-                
+
         data = odc.stac.load(
             items=items,
             bands=variables,
@@ -160,8 +157,8 @@ class STACProvider(BaseProvider):
             geobox=geobox,
             groupby=groupby,
             # This is important for the filtering to be used!
-            # By default items are sorted by time, id within each group to make pixel fusing order deterministic. 
-            # Setting this flag to True will instead keep items within each group in the same order as supplied, 
+            # By default items are sorted by time, id within each group to make pixel fusing order deterministic.
+            # Setting this flag to True will instead keep items within each group in the same order as supplied,
             # so that one can implement arbitrary priority for pixel overlap cases.
             preserve_original_order=True,
             **kwargs,
@@ -176,30 +173,24 @@ class STACProvider(BaseProvider):
         item: pystac.Item | list[pystac.Item],
         variables: list[str],
         threads: int = 8,
-        **kwargs
+        **kwargs,
     ) -> bytes:
         if isinstance(item, pystac.Item):
             item = [item]
-            
+
         href_path_tuples = [
-            (asset.href,
-            os.path.join(
-                out_dir, 
-                i.id,
-                os.path.basename(asset.href)
-                )
-            )
+            (asset.href, os.path.join(out_dir, i.id, os.path.basename(asset.href)))
             for i in item
             for v, asset in i.get_assets().items()
             if v in variables
         ]
         return self._download_assets_parallel(href_path_tuples, threads)
-    
+
     def _get_asset(
         self,
         href: str,
         save_path: Path,
-        ):
+    ):
         """
         Get one asset from a given href and save it to the specified path.
         This function will create the necessary directories if they do not exist,
@@ -240,8 +231,8 @@ class STACProvider(BaseProvider):
     def _download_assets_parallel(
         self,
         asset_list: tuple[str, str],
-        threads: int=4,
-        ):
+        threads: int = 4,
+    ):
         """
         Download a list of assets in parallel using a thread pool executor.
         This function will create a partial function with the signer and then use
@@ -281,6 +272,8 @@ register_provider('planetary_computer', _planetary)
 # os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
 # os.environ["GDAL_HTTP_UNSAFESSL"] = "YES"
 _cdse = partial(
-    STACProvider, url='https://stac.dataspace.copernicus.eu/v1/', sign=None,
+    STACProvider,
+    url='https://stac.dataspace.copernicus.eu/v1/',
+    sign=None,
 )
 register_provider('cdse', _cdse)

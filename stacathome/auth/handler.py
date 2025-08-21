@@ -1,7 +1,8 @@
 from pathlib import Path
 
+
 class SecretStore:
-    def __init__(self, custom_name:str|None=None, mock=False):
+    def __init__(self, custom_name: str | None = None, mock=False):
         name = custom_name if custom_name else '.stacathome_secrets.env'
         self.filename = Path.home() / name
 
@@ -9,7 +10,7 @@ class SecretStore:
             self.filename = name
         # if not self.filename.exists():
         #     self.filename = None
-    
+
     def exists(self):
         return self.filename.exists()
 
@@ -54,7 +55,7 @@ class SecretStore:
             raise ValueError(f"Expected exactly one key under name '{name}', found {len(keys)}.")
         key, value = next(iter(keys.items()))
         return (key, value)
-    
+
     def delete_key(self, name, key):
         secrets = self._read_all()
         if name not in secrets or key not in secrets[name]:
