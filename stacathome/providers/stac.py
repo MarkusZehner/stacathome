@@ -1,6 +1,9 @@
+import os
 from datetime import datetime
 from functools import partial
 from typing import Callable
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import odc
 import odc.stac
@@ -10,6 +13,7 @@ import pystac
 import pystac_client
 import xarray as xr
 from odc.geo.geobox import GeoBox
+from urllib.request import urlretrieve
 
 from stacathome.metadata import CollectionMetadata, Variable
 from .common import BaseProvider, register_provider
@@ -127,7 +131,10 @@ class STACProvider(BaseProvider):
         return items
 
     def load_items(
-        self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables=None, **kwargs
+        self, items: pystac.ItemCollection,
+        geobox: GeoBox | None = None,
+        variables: list[str]=None,
+        **kwargs
     ) -> xr.Dataset:
         if not items:
             raise ValueError('No items provided for loading.')
@@ -163,8 +170,97 @@ class STACProvider(BaseProvider):
         data = data.sortby('time')
         return data
 
-    def load_granule(self, item: pystac.Item, **kwargs) -> bytes:
-        raise NotImplementedError
+    def load_granule(
+        self,
+        out_dir: Path | str,
+        item: pystac.Item | list[pystac.Item],
+        variables: list[str],
+        threads: int = 8,
+        **kwargs
+    ) -> bytes:
+        if isinstance(item, pystac.Item):
+            item = [item]
+            
+        href_path_tuples = [
+            (asset.href,
+            os.path.join(
+                out_dir, 
+                i.id,
+                os.path.basename(asset.href)
+                )
+            )
+            for i in item
+            for v, asset in i.get_assets().items()
+            if v in variables
+        ]
+        return self._download_assets_parallel(href_path_tuples, threads)
+    
+    def _get_asset(
+        self,
+        href: str,
+        save_path: Path,
+        ):
+        """
+        Get one asset from a given href and save it to the specified path.
+        This function will create the necessary directories if they do not exist,
+        and will skip downloading if the file already exists.
+        It also handles cleanup in case of an interruption during the download.
+
+        Parameters:
+        ----------
+        href : str
+            The URL of the asset to download.
+        save_path : Path
+            The local path where the asset should be saved.
+
+        Returns:
+        -------
+        None
+
+        Raises:
+        -------
+        Exception: If there is an error during the download process.
+        KeyboardInterrupt: If the download is interrupted by the user.
+        SystemExit: If the download is interrupted by a system exit.
+        """
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        if os.path.exists(save_path):
+            return
+        try:
+            urlretrieve(self.sign(href), save_path)
+        except (KeyboardInterrupt, SystemExit):
+            if os.path.exists(save_path):
+                try:
+                    os.remove(save_path)
+                except Exception as e:
+                    print(f"Error during cleanup of file {save_path}:", e)
+        except Exception as e:
+            print(f"Error downloading {href}:", e)
+
+    def _download_assets_parallel(
+        self,
+        asset_list: tuple[str, str],
+        threads: int=4,
+        ):
+        """
+        Download a list of assets in parallel using a thread pool executor.
+        This function will create a partial function with the signer and then use
+        a thread pool to download each asset concurrently.
+
+        Parameters:
+        ----------
+        asset_list : list of tuples
+            A list where each tuple contains the href and the save path for the asset.
+            Example: [(href1, save_path1), (href2, save_path2), ...]
+        threads : int, default 4
+            The maximum number of worker threads to use for downloading.
+
+        Returns:
+        -------
+        None
+        """
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            executor.map(lambda args: self._get_asset(*args), asset_list)
 
 
 _planetary = partial(
