@@ -1,12 +1,9 @@
 import pytest
 import shapely
 from odc.geo.geobox import GeoBox
-from stacathome.processors.sentinel2 import (
-    s2_pc_filter_coverage,
-    s2_pc_filter_geometry_coverage,
-    s2_pc_filter_newest_processing_time,
-    S2Item,
-)
+
+from stacathome.processors.sentinel2 import s2_pc_filter_newest_processing_time
+from stacathome.processors.common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
 from stacathome.providers import get_provider
 
 
@@ -214,16 +211,16 @@ class TestSentinel2L2AProcessor:
             endtime='2023-07-30',
             roi=area_of_interest,
         )
-        s2_items = [S2Item(item) for item in items]
+        s2_items = [MGRSTiledItem(item) for item in items]
         assert len(items) == len(all_returns)
 
         only_newer_processing = s2_pc_filter_newest_processing_time(s2_items)
         assert len(only_newer_processing) == len(filter_processing_time)
 
-        coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, roi_small)
+        coverage_filtered_items = mgrs_tiled_overlap_filter_coverage(only_newer_processing, roi_small)
         assert len(coverage_filtered_items) == len(filter_processing_coverage)
 
-        coverage_filtered_items_large = s2_pc_filter_coverage(only_newer_processing, area_of_interest)
+        coverage_filtered_items_large = mgrs_tiled_overlap_filter_coverage(only_newer_processing, area_of_interest)
         assert len(coverage_filtered_items_large) == len(filter_processing_larger_coverage)
         
         assert {i.id for i in items} == all_returns

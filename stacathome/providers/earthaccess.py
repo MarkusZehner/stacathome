@@ -4,6 +4,7 @@ import re
 from importlib.resources import files
 from pathlib import Path
 import csv
+from collections import defaultdict
 
 import shapely
 import pystac
@@ -12,13 +13,15 @@ import earthaccess.results
 from earthaccess.search import DataCollections
 from odc.stac import load
 from odc.geo.geom import Geometry
+from odc.geo import geom
 from rio_stac.stac import bbox_to_geom
 from rasterio.env import Env
 
+import stacathome.geo as geo
 from ..generic_utils import get_nested
 from ..stac import update_stac_item, update_asset_exts
 from .common import BaseProvider, register_provider
-
+from stacathome.processors.common import get_property
 
 def save_list_of_tuples(data, path):
     data = sorted(data, key=lambda x: x[0])
@@ -151,7 +154,7 @@ class EarthAccessProvider(BaseProvider):
 
         gpolygon = geometry_entry.get('GPolygons')
         if gpolygon:
-            poly = shapely.Polygon([shapely.Point(*i.values()) for i in gpolygon[0]['Boundary']['Points']])
+            poly = shapely.Polygon([shapely.Point(i['Longitude'], i['Latitude']) for i in gpolygon[0]['Boundary']['Points']])
             item_geometry = shapely.geometry.mapping(poly)
             item_bbox = poly.bounds
 
@@ -210,6 +213,12 @@ class EarthAccessProvider(BaseProvider):
         threads: int = 1,
         **kwargs,
     ) -> bytes:
+        if isinstance(item, list) or isinstance(item, pystac.ItemCollection):
+            return_items = []
+            for i in item:
+                return_items.append(self.load_granule(i, variables, out_dir, threads, **kwargs))
+            return pystac.ItemCollection(return_items)
+        
         if variables:
             urls = [asset.href for name, asset in item.get_assets().items() if name in variables]
         else:
@@ -226,11 +235,94 @@ class EarthAccessProvider(BaseProvider):
         item = update_stac_item(item, urls, local_files)
         return item
 
-    def create_cube(self, items, parameters):
-        data = load(**parameters)
+    def create_cube(self, items, **parameters):
+        data = load(items=items, **parameters)
         if data is None:
             raise ValueError("Failed to create cube")
         return data
 
+    def opera_s1_filter_coverage(self, items, roi, min_overlap=None):
+        """
+        this method checks which crs is best to cover the roi based on input items max over lap of joined geometries
+        sorts the items then in groups of crs with best coverage first
+        min_overlap removes items which do not cover at least the min_overlap of the area
+        
+        Args:
+            items (pystac.ItemCollection): input items
+            roi (Geometry): region if interest to be covered
+            min_overlap (float): minimum overlap in percent [0-1] of roi area to be covered by items
+
+        Returns:
+            list[pystac.Item]: filtered and sorted items
+        """
+        if not get_property(items[0], 'proj:code'):
+            raise ValueError("Items do not have projection information, run extend stac item information first!")
+        
+        utm_center_easting = 500000
+        criteria_helper = namedtuple(
+            'criteria_helper', ['contains', 'dist_utm_center', 'overlap_percentage', 'proj_code', 'geometry_union']
+        )
+        # remove all non overlapping geometries
+        if not min_overlap:
+            items = [item for item in items if
+                     geo.wgs84_intersects(geom.Geometry(shapely.geometry.shape(item.geometry), '4326'), roi)]
+        else:
+            items = [item for item in items if
+                     geo.wgs84_overlap_percentage(geom.Geometry(shapely.geometry.shape(item.geometry), '4326'), roi) >= min_overlap]
+        if not items:
+            return []
+        
+        # group by utm
+        utm_groups = defaultdict(list)
+        for item in items:
+            utm_groups[get_property(item, 'proj:code')].append(item)
+
+        sort_criteria = []
+        for v in utm_groups.values():
+            proj = get_property(v[0], 'proj:code')
+
+            v_geometries = geom.unary_union([geom.Geometry(shapely.geometry.shape(vv.geometry), '4326') for vv in v])
+            sort_criteria.append(
+                criteria_helper(
+                    geo.wgs84_contains(v_geometries, roi),
+                    abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
+                    v_geometries.intersection(roi).area / roi.area,
+                    proj,
+                    v_geometries,
+                )
+            )
+
+        sort_criteria = sorted(sort_criteria)
+        return_groups = []
+        for crit in sort_criteria:
+            return_groups.extend(utm_groups[crit.proj_code])
+        return return_groups
+
+    def load_items(self, items, geobox = None, variables = None, **kwargs):
+
+        if not items:
+            raise ValueError('No items provided for loading.')
+
+        variables = set(variables) if variables else None
+        groupby = kwargs.pop('groupby', 'id')
+
+        # sort after best crs to fit data in, on which the geobox is created
+        items = self.opera_s1_filter_coverage(items, geobox.footprint('EPSG:4326'), min_overlap=kwargs.get('min_overlap', None))
+
+        data = load(
+            items=items,
+            bands=variables,
+            geobox=geobox,
+            groupby=groupby,
+            # This is important for the filtering to be used!
+            # By default items are sorted by time, id within each group to make pixel fusing order deterministic.
+            # Setting this flag to True will instead keep items within each group in the same order as supplied,
+            # so that one can implement arbitrary priority for pixel overlap cases.
+            preserve_original_order=True,
+            **kwargs,
+        )
+        # sort data by time
+        data = data.sortby('time')
+        return data
 
 register_provider('earthaccess', EarthAccessProvider)

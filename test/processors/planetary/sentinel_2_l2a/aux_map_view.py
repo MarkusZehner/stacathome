@@ -1,11 +1,8 @@
 import folium
 import shapely
 
-from stacathome.processors.sentinel2 import (
-    s2_pc_filter_coverage,
-    s2_pc_filter_newest_processing_time,
-    S2Item,
-)
+from stacathome.processors.sentinel2 import s2_pc_filter_newest_processing_time
+from stacathome.processors.common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
 from stacathome.providers import get_provider
 from .test_processor import create_test_geobox
 
@@ -43,7 +40,7 @@ if __name__ == '__main__':
         endtime='2023-07-30',
         roi=area_of_interest,
     )
-    s2_items = [S2Item(item) for item in items]
+    s2_items = [MGRSTiledItem(item) for item in items]
 
 
     only_newer_processing = s2_pc_filter_newest_processing_time(s2_items)
@@ -57,7 +54,7 @@ if __name__ == '__main__':
                 'fillOpacity': 0.1
             })
 
-    coverage_filtered_items = s2_pc_filter_coverage(only_newer_processing, roi_small)
+    coverage_filtered_items = mgrs_tiled_overlap_filter_coverage(only_newer_processing, roi_small)
 
     for i in range(4):
         m = coverage_filtered_items[i].geometry_odc_geometry.explore(m, simplify=0, name=f'cov_{i}', tooltip=f'cov_{i}',

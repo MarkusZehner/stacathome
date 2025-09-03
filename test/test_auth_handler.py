@@ -1,28 +1,3 @@
-# import pytest
-# from pathlib import Path
-
-
-# from stacathome.auth.handler import SecretStore
-
-# class TestSecretStore:
-#     name = 'test_secrets.env'
-#     store = SecretStore(custom_name=name)
-
-#     assert (Path.home() / name).exists() is False
-
-#     store.create()
-    
-#     assert (Path.home() / name).exists()
-
-#     store.add_key('test_name', 'test_key', 'test_value')
-
-#     assert store.get_key('test_name') == ('test_key', 'test_value')
-
-#     store.delete_key('test_name', 'test_key')
-
-#     with pytest.raises(KeyError):
-#         store.get_key("test_name")
-
 import pytest
 import tempfile
 from pathlib import Path

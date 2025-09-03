@@ -2,7 +2,7 @@ import pytest
 import shapely
 from odc.geo.geobox import GeoBox
 
-from stacathome.processors.sentinel2 import S2Item, s2_pc_filter_coverage
+from stacathome.processors.common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
 from stacathome.processors.ecostress import ecostress_pc_filter_newest_processing_iteration, ecostress_update_from_cloud
 from stacathome.providers import get_provider
 
@@ -57,9 +57,9 @@ class TestECO_L2T_LSTEProcessor:
         
         assert updated_items[0].properties.get('proj:code')
         
-        updated_items = [S2Item(item) for item in updated_items]
+        updated_items = [MGRSTiledItem(item) for item in updated_items]
 
-        coverage_filtered_items = s2_pc_filter_coverage(updated_items, roi_small)
+        coverage_filtered_items = mgrs_tiled_overlap_filter_coverage(updated_items, roi_small)
         assert len(coverage_filtered_items) == 1
 
         all_returns = [

@@ -1,114 +1,16 @@
 import datetime
-from collections import defaultdict, namedtuple
 
-from functools import cached_property
-
-import numpy as np
 import odc.geo.geom as geom
 import pystac
-import shapely
-from shapely import box
 import xarray as xr
 
 import stacathome.geo as geo
 from stacathome.providers import BaseProvider
 from .base import register_default_processor, SimpleProcessor
+from .common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage, filter_no_data_timesteps, _get_coord_name_and_resolution
 
 
-def get_property(item: pystac.Item, property_name: str, asset_name: str = None) -> str | None:
-    if asset_name:
-        asset = item.assets.get(asset_name)
-        if asset is None:
-            raise ValueError(f"Asset '{asset_name}' not found in item.")
-        item_property = asset.extra_fields.get(property_name)
-        if not item_property:
-            item_property = item.properties.get(property_name)
-        if not item_property:
-            item_property = item.extra_fields.get(property_name)
-        return item_property
-    else:
-        item_property = None
-        for name, asset in item.assets.items():
-            asset_property = get_property(item, property_name, name)
-            if asset_property and item_property and asset_property != item_property:
-                raise ValueError("Conflicting properties found in item over assets.")
-            elif asset_property:
-                item_property = asset_property
-        return item_property
-
-
-# def get_property(item: pystac.Item, property_name:str, asset_name: str = None, ):
-#      return get_asset_property(item, property_name, asset_name)
-
-
-class S2Item(pystac.Item):
-
-    def __init__(self, item, validate: bool = True):
-        self._item = item
-        if validate:
-            self._validate()
-
-    def _validate(self):
-        if self._item.geometry is None:
-            raise ValueError('Item does not have a geometry.')
-        if not self.mgrs_tile:
-            raise ValueError("Item does not contain a tile-id property.")
-        if not get_property(self._item, 'proj:code'):
-            raise ValueError("Item does not have 'proj:code' property.")
-
-    def __getattr__(self, item):
-        """
-        Delegate attribute access to the underlying pystac.Item.
-        """
-        return getattr(self._item, item)
-
-    @property
-    def proj_code(self):
-        """
-        Get the projection code from the item properties.
-        """
-        return get_property(self._item, 'proj:code')
-
-    @property
-    def mgrs_tile(self):
-        """
-        Get the MGRS tile identifier from the item properties.
-        """
-        mgrs_tile = get_property(self._item, 's2:mgrs_tile')
-        if not mgrs_tile:
-            mgrs_tile = get_property(self._item, 'grid:code').split('-')[-1]
-        return mgrs_tile
-
-    @cached_property
-    def geometry_shapely(self):
-        """
-        Get the geometry of the item as a shapely object.
-        """
-        return shapely.geometry.shape(self._item.geometry)
-
-    @cached_property
-    def bbox_shapely(self):
-        """
-        Get the bounding box of the item as a shapely object.
-        """
-        return box(*self._item.bbox)
-
-    @cached_property
-    def geometry_odc_geometry(self):
-        """
-        Get the geometry of the item as a odc.geo Geometry object.
-        """
-        return geom.Geometry(shapely.geometry.shape(self._item.geometry), '4326')
-
-    @cached_property
-    def bbox_odc_geometry(self):
-        """
-        Get the bounding box of the item as a odc.geo Geometry object.
-        """
-        return geom.Geometry(box(*self._item.bbox), '4326')
-
-
-def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
+def s2_pc_filter_newest_processing_time(items: list[MGRSTiledItem]) -> list[MGRSTiledItem]:
     """
     Returns the newest version of S2 L2A items using the processing time from the ID.
     The ID is expected to be in the format
@@ -125,80 +27,11 @@ def s2_pc_filter_newest_processing_time(items: list[S2Item]) -> list[S2Item]:
             # CDSE has the Processing Baseline number
             mission_id, prod_lvl, datatake_sensing_start_time, _, rel_orbit, mgrs_tile, process_time = native_id
         else:
-            raise ValueError(f'Id if S2Item does not match known providers with {item.id}')
+            raise ValueError(f'Id if MGRSTiledItem does not match known providers with {item.id}')
         identifier = '_'.join([mission_id, prod_lvl, datatake_sensing_start_time, rel_orbit, mgrs_tile])
         if identifier not in filtered or process_time > filtered[identifier][0]:
             filtered[identifier] = (process_time, item)
     return [v[1] for v in filtered.values()]
-
-
-def s2_pc_filter_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Item]:
-    """
-    Filter Sentinel-2 items based on their coverage of the area of interest.
-    Returns a list items required to cover the area of interest.
-    """
-    utm_center_easting = 500000
-    criteria_helper = namedtuple(
-        'criteria_helper', ['contains', 'dist_utm_center', 'overlap_percentage', 'tile_id', 'geometry_union']
-    )
-    # remove all non overlapping geometries
-    items = [item for item in items if geo.wgs84_intersects(item.geometry_odc_geometry, roi)]
-
-    # group by mgrs
-    mgrs_tiles = defaultdict(list)
-    for item in items:
-        mgrs_tiles[item.mgrs_tile].append(item)
-
-    sort_criteria = []
-    # overlaps = {}
-    # utm_center_dist = {}
-    for v in mgrs_tiles.values():
-        proj = v[0].proj_code
-
-        v_geometries = geom.unary_union([vv.geometry_odc_geometry for vv in v])
-        # overlaps[v[0].mgrs_tile] = v_geometries.overlaps(roi)
-        # utm_center_dist[v[0].mgrs_tile] = abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting)
-        sort_criteria.append(
-            criteria_helper(
-                geo.wgs84_contains(v_geometries, roi),
-                abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
-                v_geometries.intersection(roi).area / roi.area,
-                v[0].mgrs_tile,
-                v_geometries,
-            )
-        )
-
-    sort_criteria = sorted(sort_criteria)
-    # print([s_c for s_c in sort_criteria])
-
-    if sort_criteria[0].contains:
-        return mgrs_tiles[sort_criteria[0].tile_id]
-
-    roi_coverage = 0.0
-    iterative_shape = None
-    return_mgrs = []
-    current_iterative_shape = None
-    for crit in sort_criteria:
-        if not iterative_shape:
-            current_iterative_shape = crit.geometry_union
-        else:
-            current_iterative_shape = geom.unary_union([crit.geometry_union, current_iterative_shape])
-        current_roi_coverage = current_iterative_shape.intersection(roi).area / roi.area
-
-        if current_roi_coverage > roi_coverage:
-            roi_coverage = current_roi_coverage
-            iterative_shape = current_iterative_shape
-            return_mgrs.extend(mgrs_tiles[crit.tile_id])
-
-    return return_mgrs
-
-
-def s2_pc_filter_geometry_coverage(items: list[S2Item], roi: geom.Geometry) -> list[S2Item]:
-    return_list = []
-    for item in items:
-        if geo.wgs84_intersects(item.geometry_odc_geometry, roi):
-            return_list.append(item)
-    return return_list
 
 
 class Sentinel2L2AProcessor(SimpleProcessor):
@@ -220,10 +53,9 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         Reoders the Items by the tile id, first item(s) corresponding to the tile closest to the roi.
 
         """
-        s2_items = [S2Item(item) for item in items]
+        s2_items = [MGRSTiledItem(item) for item in items]
         s2_items = s2_pc_filter_newest_processing_time(s2_items)
-        s2_items = s2_pc_filter_coverage(s2_items, roi)
-        # s2_items = s2_pc_filter_geometry_coverage(s2_items, roi)
+        s2_items = mgrs_tiled_overlap_filter_coverage(s2_items, roi)
         return pystac.ItemCollection(
             items=s2_items,
             clone_items=False,
@@ -286,29 +118,6 @@ def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None
             data[var] = data[var].where(scl_mask_res == 1)
 
     return data
-
-
-def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = None) -> xr.Dataset:
-    if not indicator_variable:
-        coords_res = _get_coord_name_and_resolution(data)
-        coarsest_axes = coords_res[max(coords_res)]
-        for data_var in data.data_vars.values():
-            if coarsest_axes[0] in data_var.dims:
-                indicator_variable = data_var.name
-                break
-
-    mean_over_time = data[indicator_variable].mean(dim=coarsest_axes)
-    na_value = data[indicator_variable].attrs['nodata_value']
-    mask_over_time = np.where(mean_over_time != na_value)[0]
-    return data.isel(time=mask_over_time)
-
-
-def _get_coord_name_and_resolution(data: xr.Dataset) -> dict[float, str]:
-    coord_names_resolution = defaultdict(list)
-    for coord in data.coords.values():
-        if coord.name.startswith('x') or coord.name.startswith('y'):
-            coord_names_resolution[abs(coord.attrs['resolution'])].append(coord.name)
-    return dict(coord_names_resolution)
 
 
 def harmonize_s2_data(data: xr.Dataset, scale: bool = False) -> xr.Dataset:

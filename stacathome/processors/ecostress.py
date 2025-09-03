@@ -16,7 +16,7 @@ from odc.geo.geobox import GeoBox
 
 from ..providers.common import BaseProvider
 from .base import BaseProcessor
-from .sentinel2 import S2Item, s2_pc_filter_coverage
+from .sentinel2 import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
 
 
 class ECO_L2T_LSTEProcessor(BaseProcessor):
@@ -47,8 +47,8 @@ class ECO_L2T_LSTEProcessor(BaseProcessor):
         item_list = [item for item in items]
         item_list = ecostress_pc_filter_newest_processing_iteration(item_list)
         item_list = ecostress_update_from_cloud(item_list)
-        item_list = [S2Item(item) for item in item_list]
-        item_list = s2_pc_filter_coverage(item_list, roi)
+        item_list = [MGRSTiledItem(item) for item in item_list]
+        item_list = mgrs_tiled_overlap_filter_coverage(item_list, roi)
         return pystac.ItemCollection(
             items=item_list,
             clone_items=False,

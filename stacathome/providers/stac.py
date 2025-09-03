@@ -123,7 +123,7 @@ class STACProvider(BaseProvider):
             collections=[collection],
             datetime=(starttime, endtime),
             intersects=roi,
-            limit=limit,
+            max_items=limit,
             **kwargs,
         ).item_collection()
         if items is None:
@@ -139,7 +139,7 @@ class STACProvider(BaseProvider):
         variables = set(variables) if variables else None
         groupby = kwargs.pop('groupby', 'id')
 
-        # we do not wan to sort before load, as the item order from filter gives preferred projection
+        # we do not want to sort before load, as the item order from filter gives preferred projection
         # sorted_items = False
         # for datetime_key in ['start_time', 'start_datetime', 'datetime']:
         #     if all(datetime_key in item.properties for item in items):

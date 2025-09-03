@@ -10,5 +10,5 @@ conda/mamba activate my-package-env
 uv sync
 
 # for dev
-uv sync --all-extras
+uv sync --all-extras --all-groups --cache-dir /some/dir/on/the/same/disk/as/project
 ```
