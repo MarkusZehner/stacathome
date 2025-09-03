@@ -281,7 +281,15 @@ class EarthAccessProvider(BaseProvider):
         for v in utm_groups.values():
             proj = get_property(v[0], 'proj:code')
 
-            v_geometries = geom.unary_union([geom.Geometry(shapely.geometry.shape(vv.geometry), '4326') for vv in v])
+            for vv in v:
+                tr = get_property(vv, 'proj:transform')
+                if not any([tr[2]/tr[0] % 1. == 0.,
+                           tr[5]/tr[4] % 1. == 0.]):
+                    raise ValueError('Items of same UTM zone have sub-pixel grid offsets!')
+                
+
+            v_geometries = geom.unary_union(
+                [geom.Geometry(shapely.geometry.shape(vv.geometry), '4326') for vv in v])
             sort_criteria.append(
                 criteria_helper(
                     geo.wgs84_contains(v_geometries, roi),
