@@ -149,7 +149,7 @@ def mgrs_tiled_overlap_filter_coverage(items: list[MGRSTiledItem], roi: geom.Geo
             )
         )
 
-    sort_criteria = sorted(sort_criteria)
+    sort_criteria = sorted(sort_criteria, reverse=True)
 
     if sort_criteria[0].contains:
         return mgrs_tiles[sort_criteria[0].tile_id]
