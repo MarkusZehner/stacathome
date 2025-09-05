@@ -14,9 +14,10 @@ from rio_stac.stac import (
 from odc.geo import geom
 from odc.geo.geobox import GeoBox
 
-from ..providers.common import BaseProvider
+from ..providers import SimpleProvider
 from .base import BaseProcessor
 from .sentinel2 import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
+from .common import get_property
 
 
 class ECO_L2T_LSTEProcessor(BaseProcessor):
@@ -34,7 +35,7 @@ class ECO_L2T_LSTEProcessor(BaseProcessor):
     '''
 
     def filter_items(
-        self, provider: BaseProvider, roi: geom.Geometry, items: pystac.ItemCollection
+        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection
     ) -> pystac.ItemCollection:
         """
 
@@ -46,7 +47,8 @@ class ECO_L2T_LSTEProcessor(BaseProcessor):
         extra_fields = items.extra_fields
         item_list = [item for item in items]
         item_list = ecostress_pc_filter_newest_processing_iteration(item_list)
-        item_list = ecostress_update_from_cloud(item_list)
+        if not get_property(item_list[0], 'proj:transform'):
+            item_list = update_tiled_data_from_raster(item_list)
         item_list = [MGRSTiledItem(item) for item in item_list]
         item_list = mgrs_tiled_overlap_filter_coverage(item_list, roi)
         return pystac.ItemCollection(
@@ -57,12 +59,13 @@ class ECO_L2T_LSTEProcessor(BaseProcessor):
 
     def load_items_geoboxed(
         self,
-        provider: BaseProvider,
+        provider: SimpleProvider,
         geobox: GeoBox,
         items: pystac.ItemCollection,
         variables: list[str] | None = None,
         resampling: dict[str, str] | None = None,
         dtype: dict[str, float] | None = None,
+        group_by: str | None = None,
     ) -> xr.Dataset:
         """
         Download items in the collection.
@@ -71,18 +74,17 @@ class ECO_L2T_LSTEProcessor(BaseProcessor):
         :param items: The item collection to download.
         :return: Item collection with downloaded items.
         """
-        if not items:
-            raise ValueError('No items provided')
-        variables = set(variables) if variables else None
-
         with Env(**handle_rasterio_env()):
-            return provider.load_items(
-                items,
+            xr_dataset = super().load_items_geoboxed(
+                provider=provider,
                 geobox=geobox,
+                items=items,
                 variables=variables,
                 resampling=resampling,
                 dtype=dtype,
+                group_by=group_by,
             )
+        return xr_dataset
 
 
 def handle_rasterio_env() -> dict:
@@ -116,7 +118,7 @@ def ecostress_pc_filter_newest_processing_iteration(items: list[pystac.Item]) ->
     return [v[1] for v in filtered.values()]
 
 
-def ecostress_update_from_cloud(items: list[pystac.Item], proj=True, raster=False) -> list[pystac.Item]:
+def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=False) -> list[pystac.Item]:
     """
     Gathers additional information by reading the metadata from the provider.
     To limit this, items are grouped by their UTM zone and

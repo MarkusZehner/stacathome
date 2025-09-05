@@ -83,7 +83,7 @@ class MGRSTiledItem(pystac.Item):
 def get_property(item: pystac.Item, property_name: str, asset_name: str = None) -> str | None:
     """
     Get a defined property from a STAC item or its assets.
-    
+
     args:
         item: The STAC item to get the property from.
         property_name: The name of the property to get.
@@ -113,14 +113,16 @@ def get_property(item: pystac.Item, property_name: str, asset_name: str = None) 
         return item_property
 
 
-def mgrs_tiled_overlap_filter_coverage(items: list[MGRSTiledItem], roi: geom.Geometry) -> list[MGRSTiledItem]:
+def mgrs_tiled_overlap_filter_coverage(
+    items: list[MGRSTiledItem], roi: geom.Geometry, debug=False
+) -> list[MGRSTiledItem]:
     """
     Filter Sentinel-2 items based on their coverage of the area of interest.
     Returns a list items required to cover the area of interest.
     """
     utm_center_easting = 500000
     criteria_helper = namedtuple(
-        'criteria_helper', ['contains', 'dist_utm_center', 'overlap_percentage', 'tile_id', 'geometry_union']
+        'criteria_helper', ['contains', 'negative_dist_utm_center', 'overlap_percentage', 'tile_id', 'geometry_union']
     )
     # remove all non overlapping geometries
     items = [item for item in items if geo.wgs84_intersects(item.geometry_odc_geometry, roi)]
@@ -142,7 +144,7 @@ def mgrs_tiled_overlap_filter_coverage(items: list[MGRSTiledItem], roi: geom.Geo
         sort_criteria.append(
             criteria_helper(
                 geo.wgs84_contains(v_geometries, roi),
-                abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
+                -abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
                 v_geometries.intersection(roi).area / roi.area,
                 v[0].mgrs_tile,
                 v_geometries,
@@ -150,6 +152,11 @@ def mgrs_tiled_overlap_filter_coverage(items: list[MGRSTiledItem], roi: geom.Geo
         )
 
     sort_criteria = sorted(sort_criteria, reverse=True)
+
+    if debug:
+        print('roi: ', roi)
+        for s in sort_criteria:
+            print(s)
 
     if sort_criteria[0].contains:
         return mgrs_tiles[sort_criteria[0].tile_id]
@@ -171,6 +178,76 @@ def mgrs_tiled_overlap_filter_coverage(items: list[MGRSTiledItem], roi: geom.Geo
             return_mgrs.extend(mgrs_tiles[crit.tile_id])
 
     return return_mgrs
+
+
+def no_overlap_filter_coverage(items, roi, min_overlap=None):
+    """
+    this method checks which crs is best to cover the roi based on input items max over lap of joined geometries
+    sorts the items then in groups of crs with best coverage first
+    min_overlap removes items which do not cover at least the min_overlap of the area
+
+    Args:
+        items (pystac.ItemCollection): input items
+        roi (Geometry): region if interest to be covered
+        min_overlap (float): minimum overlap in percent [0-1] of roi area to be covered by items
+
+    Returns:
+        list[pystac.Item]: filtered and sorted items
+    """
+    if not get_property(items[0], 'proj:code'):
+        raise ValueError("Items do not have projection information, run extend stac item information first!")
+
+    utm_center_easting = 500000
+    criteria_helper = namedtuple(
+        'criteria_helper', ['contains', 'dist_utm_center', 'overlap_percentage', 'proj_code', 'geometry_union']
+    )
+    # remove all non overlapping geometries
+    if not min_overlap:
+        items = [
+            item
+            for item in items
+            if geo.wgs84_intersects(geom.Geometry(shapely.geometry.shape(item.geometry), '4326'), roi)
+        ]
+    else:
+        items = [
+            item
+            for item in items
+            if geo.wgs84_overlap_percentage(geom.Geometry(shapely.geometry.shape(item.geometry), '4326'), roi)
+            >= min_overlap
+        ]
+    if not items:
+        return []
+
+    # group by utm
+    utm_groups = defaultdict(list)
+    for item in items:
+        utm_groups[get_property(item, 'proj:code')].append(item)
+
+    sort_criteria = []
+    for v in utm_groups.values():
+        proj = get_property(v[0], 'proj:code')
+
+        for vv in v:
+            tr = get_property(vv, 'proj:transform')
+            if not any([tr[2] / tr[0] % 1.0 == 0.0, tr[5] / tr[4] % 1.0 == 0.0]):
+                raise ValueError('Items of same UTM zone have sub-pixel grid offsets!')
+
+        v_geometries = geom.unary_union([geom.Geometry(shapely.geometry.shape(vv.geometry), '4326') for vv in v])
+        sort_criteria.append(
+            criteria_helper(
+                geo.wgs84_contains(v_geometries, roi),
+                abs(v_geometries.to_crs(proj).centroid.points[0][0] - utm_center_easting),
+                v_geometries.intersection(roi).area / roi.area,
+                proj,
+                v_geometries,
+            )
+        )
+
+    sort_criteria = sorted(sort_criteria)
+    return_groups = []
+    for crit in sort_criteria:
+        return_groups.extend(utm_groups[crit.proj_code])
+    return return_groups
 
 
 def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = None) -> xr.Dataset:

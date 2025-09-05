@@ -5,9 +5,14 @@ import pystac
 import xarray as xr
 
 import stacathome.geo as geo
-from stacathome.providers import BaseProvider
+from stacathome.providers import SimpleProvider
 from .base import register_default_processor, SimpleProcessor
-from .common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage, filter_no_data_timesteps, _get_coord_name_and_resolution
+from .common import (
+    MGRSTiledItem,
+    mgrs_tiled_overlap_filter_coverage,
+    filter_no_data_timesteps,
+    _get_coord_name_and_resolution,
+)
 
 
 def s2_pc_filter_newest_processing_time(items: list[MGRSTiledItem]) -> list[MGRSTiledItem]:
@@ -44,7 +49,7 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         self.adjust_baseline = adjust_baseline
 
     def filter_items(
-        self, provider: BaseProvider, roi: geom.Geometry, items: pystac.ItemCollection
+        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection
     ) -> pystac.ItemCollection:
         """
 

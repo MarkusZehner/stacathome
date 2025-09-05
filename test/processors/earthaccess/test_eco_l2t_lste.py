@@ -3,7 +3,7 @@ import shapely
 from odc.geo.geobox import GeoBox
 
 from stacathome.processors.common import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
-from stacathome.processors.ecostress import ecostress_pc_filter_newest_processing_iteration, ecostress_update_from_cloud
+from stacathome.processors.ecostress import ecostress_pc_filter_newest_processing_iteration, update_tiled_data_from_raster
 from stacathome.providers import get_provider
 
 NEAR_TILE_CORNER = shapely.Point(704800, 5895040) # EPSG:32632
@@ -53,7 +53,7 @@ class TestECO_L2T_LSTEProcessor:
         only_newer_processing = ecostress_pc_filter_newest_processing_iteration(items)
         assert len(only_newer_processing) == 2
         
-        updated_items = ecostress_update_from_cloud(only_newer_processing)
+        updated_items = update_tiled_data_from_raster(only_newer_processing)
         
         assert updated_items[0].properties.get('proj:code')
         

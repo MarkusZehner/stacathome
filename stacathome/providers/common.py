@@ -6,6 +6,7 @@ import pystac
 import shapely
 import xarray as xr
 from odc.geo.geobox import GeoBox
+from odc.stac import load
 
 from stacathome.metadata import CollectionMetadata
 
@@ -151,6 +152,7 @@ class BaseProvider:
         Args:
             items (pystac.ItemCollection): The collection of STAC items to load.
             geobox (GeoBox, optional): Specifies the spatial extent and coordinate reference system (CRS) of the output dataset. Defaults to None.
+            variables (Iterable[str], optional): Specifies which variables to load from the items.
             **kwargs: Additional keyword arguments for loading.
 
         Returns:
@@ -158,9 +160,16 @@ class BaseProvider:
         """
         raise NotImplementedError
 
-    def load_granule(self, item: pystac.Item, variables: list[str], **kwargs) -> bytes:
+    def load_granule(
+        self,
+        item: pystac.Item,
+        variables: list[str] | None = None,
+        out_dir: str | None = None,
+        threads: int = 1,
+        **kwargs,
+    ) -> bytes:
         """
-        Loads a single granule from the provider into memory.
+        Loads granules of item variables from the provider to disk.
 
         Args:
             item (pystac.Item): The item representing the granule to load.
@@ -170,6 +179,53 @@ class BaseProvider:
             bytes: The loaded granule as a bytes object.
         """
         raise NotImplementedError
+
+
+class SimpleProvider(BaseProvider):
+    """
+    Simple provider to collect common functions.
+    """
+
+    def load_items(
+        self,
+        items: pystac.ItemCollection,
+        geobox: GeoBox | None = None,
+        variables: Iterable[str] | None = None,
+        **kwargs,
+    ) -> xr.Dataset:
+        """
+        Loads items from the provider and returns them as a merged xarray.Dataset.
+
+        Args:
+            items (pystac.ItemCollection): The collection of STAC items to load.
+            geobox (GeoBox, optional): Specifies the spatial extent and coordinate reference system (CRS) of the output dataset. Defaults to None.
+            variables (Iterable[str], optional): Specifies which variables to load from the items.
+            **kwargs: Additional keyword arguments for loading.
+
+        Returns:
+            xr.Dataset: The loaded and merged dataset from the provided items.
+        """
+        if not items:
+            raise ValueError('No items provided for loading.')
+
+        variables = set(variables) if variables else None
+        groupby = kwargs.pop('groupby', 'id')
+
+        data = load(
+            items=items,
+            bands=variables,
+            geobox=geobox,
+            groupby=groupby,
+            # This is important for the filtering to be used!
+            # By default items are sorted by time, id within each group to make pixel fusing order deterministic.
+            # Setting this flag to True will instead keep items within each group in the same order as supplied,
+            # so that one can implement arbitrary priority for pixel overlap cases.
+            preserve_original_order=True,
+            **kwargs,
+        )
+        # sort data by time
+        data = data.sortby('time')
+        return data
 
 
 def get_provider(provider_name: str) -> BaseProvider:

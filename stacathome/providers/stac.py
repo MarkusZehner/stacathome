@@ -16,10 +16,10 @@ from odc.geo.geobox import GeoBox
 from urllib.request import urlretrieve
 
 from stacathome.metadata import CollectionMetadata, Variable
-from .common import BaseProvider, register_provider
+from .common import BaseProvider, SimpleProvider, register_provider
 
 
-class STACProvider(BaseProvider):
+class STACProvider(SimpleProvider):
 
     def __init__(self, provider_name: str, url: str, sign: Callable):
         super().__init__(provider_name)
@@ -129,43 +129,6 @@ class STACProvider(BaseProvider):
         if items is None:
             raise ValueError("Failed to get data from the API")
         return items
-
-    def load_items(
-        self, items: pystac.ItemCollection, geobox: GeoBox | None = None, variables: list[str] = None, **kwargs
-    ) -> xr.Dataset:
-        if not items:
-            raise ValueError('No items provided for loading.')
-
-        variables = set(variables) if variables else None
-        groupby = kwargs.pop('groupby', 'id')
-
-        # we do not want to sort before load, as the item order from filter gives preferred projection
-        # sorted_items = False
-        # for datetime_key in ['start_time', 'start_datetime', 'datetime']:
-        #     if all(datetime_key in item.properties for item in items):
-        #         items = sorted(items, key=lambda x: x.properties.get(datetime_key))
-        #         sorted_items = True
-        #         break
-
-        # if not sorted_items:
-        #     raise ValueError('Inconsistent start_time/datetime info in items, check the ItemCollection!')
-
-        data = odc.stac.load(
-            items=items,
-            bands=variables,
-            patch_url=self.sign,
-            geobox=geobox,
-            groupby=groupby,
-            # This is important for the filtering to be used!
-            # By default items are sorted by time, id within each group to make pixel fusing order deterministic.
-            # Setting this flag to True will instead keep items within each group in the same order as supplied,
-            # so that one can implement arbitrary priority for pixel overlap cases.
-            preserve_original_order=True,
-            **kwargs,
-        )
-        # sort data by time
-        data = data.sortby('time')
-        return data
 
     def load_granule(
         self,

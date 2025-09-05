@@ -67,6 +67,7 @@ class BaseProcessor:
         variables: list[str] | None = None,
         resampling: dict[str, str] | None = None,
         dtype: dict[str, float] | None = None,
+        group_by: str | None = None,
     ) -> xr.Dataset:
         """
         Download items in the collection.
@@ -78,7 +79,9 @@ class BaseProcessor:
         if not items:
             raise ValueError('No items provided')
         variables = set(variables) if variables else None
-        loaded_xr = provider.load_items(items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype)
+        loaded_xr = provider.load_items(
+            items, geobox=geobox, variables=variables, resampling=resampling, dtype=dtype, group_by=group_by
+        )
         return loaded_xr
 
     def postprocess_data(self, provider: BaseProvider, roi: Geometry, data: xr.Dataset) -> xr.Dataset:
@@ -104,6 +107,7 @@ class SimpleProcessor(BaseProcessor):
         variables: list[str] | None = None,
         resampling: dict[str, str] | None = None,
         dtype: dict[str, float] | None = None,
+        group_by: str | None = None,
     ) -> xr.Dataset:
         if not items:
             raise ValueError('No items provided')
@@ -121,6 +125,7 @@ class SimpleProcessor(BaseProcessor):
             variables=variables,
             resampling=resampling,
             dtype=dtype,
+            group_by=group_by,
         )
 
         attrs_per_var = metadata.attributes_per_variable()
@@ -128,7 +133,6 @@ class SimpleProcessor(BaseProcessor):
             var_attrs = attrs_per_var.get(variable_name, {})
             var_attrs['resampling'] = resampling.get('variable_name', 'nearest')
             xr_dataset[variable_name].attrs.update(var_attrs)
-
         return xr_dataset
 
 
