@@ -185,6 +185,9 @@ class SimpleProvider(BaseProvider):
     """
     Simple provider to collect common functions.
     """
+    def __init__(self, name):
+        super().__init__(name)
+        self.sign = None
 
     def load_items(
         self,
@@ -221,6 +224,7 @@ class SimpleProvider(BaseProvider):
             # Setting this flag to True will instead keep items within each group in the same order as supplied,
             # so that one can implement arbitrary priority for pixel overlap cases.
             preserve_original_order=True,
+            patch_url=self.sign,
             **kwargs,
         )
         # sort data by time
