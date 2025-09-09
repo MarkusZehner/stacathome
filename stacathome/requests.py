@@ -80,6 +80,7 @@ def load(
     variables: Iterable[str] = None,
     processor: BaseProcessor = None,
     no_default_processor: bool = False,
+    **kwargs,
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
     provider, processor = _get_provider_and_processor(provider_name, collection, processor, no_default_processor)
 
@@ -88,6 +89,7 @@ def load(
         starttime=starttime,
         endtime=endtime,
         roi=roi,
+        **kwargs,
     )
     if not items:
         raise ValueError('No items matched the search query')

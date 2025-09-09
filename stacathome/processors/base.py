@@ -128,7 +128,7 @@ class SimpleProcessor(BaseProcessor):
             group_by=group_by,
         )
 
-        attrs_per_var = metadata.attributes_per_variable()
+        attrs_per_var = metadata.attributes_per_variable() if metadata else {}
         for variable_name in xr_dataset.keys():
             var_attrs = attrs_per_var.get(variable_name, {})
             var_attrs['resampling'] = resampling.get('variable_name', 'nearest')

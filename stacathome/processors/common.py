@@ -260,7 +260,11 @@ def filter_no_data_timesteps(data: xr.Dataset, indicator_variable: str | None = 
                 break
 
     mean_over_time = data[indicator_variable].mean(dim=coarsest_axes)
-    na_value = data[indicator_variable].attrs['nodata_value']
+    no_data_keys = ['nodata_value', 'nodata']
+    for k in no_data_keys:
+        na_value = data[indicator_variable].attrs.get(k)
+        if no_data_keys:
+            break
     mask_over_time = np.where(mean_over_time != na_value)[0]
     return data.isel(time=mask_over_time)
 

@@ -147,10 +147,9 @@ def harmonize_s2_data(data: xr.Dataset, scale: bool = False) -> xr.Dataset:
     offset = 1000
 
     bands = list(data.data_vars)
-    do_not_harmonize = ['SCL', 'AOT', 'WVP']
-    for var in do_not_harmonize:
-        if var in bands:
-            bands.remove(var)
+    do_not_harmonize = ['SCL', 'AOT', 'WVP', 'TCI']
+
+    bands = [b for b in bands if not any(var in b for var in do_not_harmonize)]
 
     prev_dtype = str(data[bands[0]].dtype)
 
@@ -181,3 +180,4 @@ def harmonize_s2_data(data: xr.Dataset, scale: bool = False) -> xr.Dataset:
 
 
 register_default_processor('planetary_computer', 'sentinel-2-l2a', Sentinel2L2AProcessor)
+register_default_processor('cdse', 'sentinel-2-l2a', Sentinel2L2AProcessor)

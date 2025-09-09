@@ -15,12 +15,12 @@ from odc.geo import geom
 from odc.geo.geobox import GeoBox
 
 from ..providers import SimpleProvider
-from .base import BaseProcessor
+from .base import SimpleProcessor, register_default_processor
 from .sentinel2 import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
 from .common import get_property
 
 
-class ECO_L2T_LSTEProcessor(BaseProcessor):
+class ECO_L2T_LSTEProcessor(SimpleProcessor):
     '''
     process:
     -> request items,
@@ -176,3 +176,5 @@ def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=Fa
             item.properties['grid:code'] = utm_zone
             items_with_exts.append(item)
     return items_with_exts
+
+register_default_processor('earthaccess', 'ECO_L2T_LSTE', ECO_L2T_LSTEProcessor)

@@ -92,6 +92,7 @@ class EarthAccessProvider(SimpleProvider):
         endtime: datetime,
         roi: Geometry = None,
         limit: int = None,
+        as_item_collection:bool = True,
         **kwargs,
     ) -> pystac.ItemCollection:
         # nasa item collections have versions. those are separated by a '.' in other documents after the short_name
@@ -108,7 +109,10 @@ class EarthAccessProvider(SimpleProvider):
             count=limit if limit else -1,
             **kwargs,
         )
-        return self.to_itemcollection(granules)
+        if as_item_collection:
+            return self.to_itemcollection(granules)
+        else:
+            return granules
 
     def to_itemcollection(self, granules: list[earthaccess.results.DataGranule]) -> pystac.ItemCollection:
         items = [self.create_item(granule) for granule in granules]
