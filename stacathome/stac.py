@@ -9,16 +9,12 @@ from typing import Iterable
 import odc.geo.geom as geom
 import odc.stac
 import pystac
+import rasterio
 import xarray as xr
 from odc.geo.geobox import GeoBox
 from pystac.extensions.projection import ProjectionExtension
 from pystac.extensions.raster import RasterExtension
-
-import rasterio
-from rio_stac.stac import (
-    get_projection_info,
-    get_raster_info,
-)
+from rio_stac.stac import get_projection_info, get_raster_info
 
 
 def update_asset_exts(asset):

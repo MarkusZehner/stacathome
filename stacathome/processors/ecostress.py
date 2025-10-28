@@ -1,23 +1,20 @@
 from collections import defaultdict
 from pathlib import Path
 
-import xarray as xr
-import rasterio
-from rasterio.env import Env
 import pystac
-from pystac.extensions.projection import ProjectionExtension
-from pystac.extensions.raster import RasterExtension
-from rio_stac.stac import (
-    get_projection_info,
-    get_raster_info,
-)
+import rasterio
+import xarray as xr
 from odc.geo import geom
 from odc.geo.geobox import GeoBox
+from pystac.extensions.projection import ProjectionExtension
+from pystac.extensions.raster import RasterExtension
+from rasterio.env import Env
+from rio_stac.stac import get_projection_info, get_raster_info
 
 from ..providers import SimpleProvider
-from .base import SimpleProcessor, register_default_processor
-from .sentinel2 import MGRSTiledItem, mgrs_tiled_overlap_filter_coverage
+from .base import register_default_processor, SimpleProcessor
 from .common import get_property
+from .sentinel2 import mgrs_tiled_overlap_filter_coverage, MGRSTiledItem
 
 
 class ECO_L2T_LSTEProcessor(SimpleProcessor):
@@ -35,7 +32,10 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
     '''
 
     def filter_items(
-        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection, 
+        self,
+        provider: SimpleProvider,
+        roi: geom.Geometry,
+        items: pystac.ItemCollection,
         temp_path: Path | None = None,
     ) -> pystac.ItemCollection:
         """
@@ -49,7 +49,7 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
         item_list = [item for item in items]
         item_list = ecostress_pc_filter_newest_processing_iteration(item_list)
 
-        if temp_path: 
+        if temp_path:
             item_list = provider.load_granule(item_list, out_dir=temp_path)
 
         if not get_property(item_list[0], 's2:mgrs_tile'):
@@ -57,7 +57,7 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
 
         if not get_property(item_list[0], 'proj:transform'):
             item_list = update_tiled_data_from_raster(item_list)
-            
+
         item_list = [MGRSTiledItem(item) for item in item_list]
         item_list = mgrs_tiled_overlap_filter_coverage(item_list, roi)
         return pystac.ItemCollection(
@@ -126,6 +126,7 @@ def ecostress_pc_filter_newest_processing_iteration(items: list[pystac.Item]) ->
             filtered[base_name] = (product_iteration, item)
     return [v[1] for v in filtered.values()]
 
+
 def ecostress_pc_add_mgrs_tile_id(items: list[pystac.Item]) -> list[pystac.Item]:
     """
     Returns the newest processing iteration of ECO_L2T_LSTE items using the processing iteration from the ID.
@@ -171,7 +172,7 @@ def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=Fa
                                 for pname, value in proj_info_set
                                 if pname in ['epsg', 'code', 'bbox', 'shape', 'transform']
                             }
-                            if 'proj:epsg' in proj_info and not 'proj:code' in proj_info:
+                            if 'proj:epsg' in proj_info and 'proj:code' not in proj_info:
                                 proj_info['proj:code'] = proj_info['proj:epsg']
                                 del proj_info['proj:epsg']
                         if raster and not raster_info.get(name):
@@ -195,5 +196,6 @@ def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=Fa
             item.properties['grid:code'] = utm_tile_id
             items_with_exts.append(item)
     return items_with_exts
+
 
 register_default_processor('earthaccess', 'ECO_L2T_LSTE', ECO_L2T_LSTEProcessor)

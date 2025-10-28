@@ -1,27 +1,26 @@
-from collections import namedtuple
-from datetime import datetime
+import csv
 import re
+from collections import defaultdict, namedtuple
+from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
-import csv
-from collections import defaultdict
 
-import shapely
-import pystac
 import earthaccess
 import earthaccess.results
+import pystac
+import shapely
 from earthaccess.search import DataCollections
-from odc.stac import load
-from odc.geo.geom import Geometry
 from odc.geo import geom
-from rio_stac.stac import bbox_to_geom
+from odc.geo.geom import Geometry
+from odc.stac import load
 from rasterio.env import Env
+from rio_stac.stac import bbox_to_geom
 
 import stacathome.geo as geo
-from ..generic_utils import get_nested
-from ..stac import update_stac_item, update_asset_exts
-from .common import BaseProvider, SimpleProvider, register_provider
 from stacathome.processors.common import get_property
+from ..generic_utils import get_nested
+from ..stac import update_asset_exts, update_stac_item
+from .common import BaseProvider, register_provider, SimpleProvider
 
 
 def save_list_of_tuples(data, path):
@@ -33,7 +32,7 @@ def save_list_of_tuples(data, path):
 
 
 def load_list_of_tuples(file_name):
-    with open(file_name, "r", encoding='utf-8') as f:
+    with open(file_name, encoding='utf-8') as f:
         reader = csv.reader(f)
         next(reader)  # skip header
         data = [tuple(row) for row in reader]
@@ -92,7 +91,7 @@ class EarthAccessProvider(SimpleProvider):
         endtime: datetime,
         roi: Geometry = None,
         limit: int = None,
-        as_item_collection:bool = True,
+        as_item_collection: bool = True,
         **kwargs,
     ) -> pystac.ItemCollection:
         # nasa item collections have versions. those are separated by a '.' in other documents after the short_name

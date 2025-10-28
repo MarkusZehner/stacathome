@@ -29,13 +29,13 @@ class TestEarthAccessProvider:
             'height',
             'view_zenith',
             'water',
-            }
+        }
 
         provider = EarthAccessProvider('earthaccess')
 
         item_col = provider.request_items(
             collection='ECO_L2T_LSTE',
-            version ='002',
+            version='002',
             starttime=start,
             endtime=end,
             roi=roi,

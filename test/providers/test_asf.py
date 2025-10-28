@@ -15,13 +15,13 @@ class TestASFProvider:
 
         EXPECTED_ITEM_IDS = {
             'SP_42291_D_008',
-            }
-        
+        }
+
         EXPECTED_ASSET_KEYS = {
             'QA',
             'XML',
             'HDF5',
-            }
+        }
         provider = ASFProvider('asf')
 
         item_col = provider.request_items(

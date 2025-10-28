@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+
 import requests
 
 from ..auth.handler import SecretStore

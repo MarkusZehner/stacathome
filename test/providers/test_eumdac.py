@@ -1,6 +1,7 @@
+import datetime
+
 import pystac
 import pytest
-import datetime
 from stacathome.providers import EUMDACProvider
 
 
@@ -15,11 +16,9 @@ class TestEUMDACProvider:
             'MSG4-SEVI-MSG15-0100-NA-20210201114243.035000000Z-NA',
             'MSG4-SEVI-MSG15-0100-NA-20210201112742.777000000Z-NA',
             'MSG4-SEVI-MSG15-0100-NA-20210201111242.521000000Z-NA',
-            }
-        
-        EXPECTED_ASSET_KEYS = {
-            'url'
-            }
+        }
+
+        EXPECTED_ASSET_KEYS = {'url'}
         provider = EUMDACProvider('asf')
 
         item_col = provider.request_items(

@@ -1,8 +1,8 @@
 from .asf import ASFProvider
-from .common import BaseProvider, SimpleProvider, get_provider, register_provider
+from .common import BaseProvider, get_provider, register_provider, SimpleProvider
 from .earthaccess import EarthAccessProvider
-from .stac import STACProvider
 from .eumdac import EUMDACProvider
+from .stac import STACProvider
 
 
 __all__ = [

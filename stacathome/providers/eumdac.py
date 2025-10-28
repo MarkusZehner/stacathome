@@ -20,31 +20,30 @@ curl -k \
 -H "Authorization: Bearer 61834514-36d4-3949-8633-317a18a8143f" \
 <api-endpoint>
 
-install epct for local data tailor: 
+install epct for local data tailor:
 micromamba create -p /.../datatailor python=3.9 -c eumetsat epct_restapi epct_webui epct_plugin_gis msg-gdal-driver
 
 '''
 
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-
 import os
 import re
 import shutil
+import threading
 import time
+from concurrent.futures import as_completed, ThreadPoolExecutor
+from datetime import datetime
 
-import shapely
-import pystac
 import eumdac
 import eumdac.cli
 import eumdac.product
+import pystac
+import shapely
+from eumdac.errors import eumdac_raise_for_status, EumdacError
 from eumdac.request import get
-from eumdac.errors import EumdacError, eumdac_raise_for_status
-from requests.exceptions import HTTPError
 
 # from odc.stac import load
 from odc.geo.geom import Geometry
+from requests.exceptions import HTTPError
 
 from .common import BaseProvider, register_provider
 

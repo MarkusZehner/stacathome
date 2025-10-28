@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
-import pytest
 
+import pytest
 from stacathome.auth.handler import SecretStore
 
 
@@ -18,9 +18,11 @@ def test_init_existing_file(temp_env_file):
     assert store.filename == temp_env_file
     assert store.exists() is True
 
+
 def test_init_missing_file(temp_env_file):
     store = SecretStore(custom_name=temp_env_file, mock=True)
     assert store.filename.exists() is False
+
 
 def test_create_creates_file(tmp_path):
     home = tmp_path

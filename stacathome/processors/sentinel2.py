@@ -4,14 +4,13 @@ import odc.geo.geom as geom
 import pystac
 import xarray as xr
 
-import stacathome.geo as geo
 from stacathome.providers import SimpleProvider
 from .base import register_default_processor, SimpleProcessor
 from .common import (
-    MGRSTiledItem,
-    mgrs_tiled_overlap_filter_coverage,
-    filter_no_data_timesteps,
     _get_coord_name_and_resolution,
+    filter_no_data_timesteps,
+    mgrs_tiled_overlap_filter_coverage,
+    MGRSTiledItem,
 )
 
 
@@ -80,7 +79,7 @@ class Sentinel2L2AProcessor(SimpleProcessor):
 
 
 def mask_data_by_scl(data: xr.Dataset, valid_scl_values: list[int] | None = None) -> xr.Dataset:
-    if not 'SCL' in data.data_vars:
+    if 'SCL' not in data.data_vars:
         raise ValueError('"SCL" variable not in data_vars, which is required by mask_by_scl')
     valid_scl_values = valid_scl_values if valid_scl_values else [4, 5, 6, 7, 11]
 

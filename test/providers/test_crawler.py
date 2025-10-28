@@ -1,6 +1,6 @@
-import pytest
 from datetime import datetime
 
+import pytest
 from stacathome.providers.crawler import LSASAFCrawler
 
 
@@ -28,4 +28,4 @@ class TestCrawler:
 
         assert set(urls) == EXPECTED_URLS
 
-        #LSASAFCrawler().load_granules(urls[:2], out_dir='/Net/Groups/BGI/work_5/scratch/mzehner/temp_test')
+        # LSASAFCrawler().load_granules(urls[:2], out_dir='/Net/Groups/BGI/work_5/scratch/mzehner/temp_test')

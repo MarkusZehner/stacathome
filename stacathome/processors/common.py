@@ -1,14 +1,12 @@
 from collections import defaultdict, namedtuple
 from functools import cached_property
-import datetime
-from collections import defaultdict, namedtuple
 
 import numpy as np
 import odc.geo.geom as geom
 import pystac
 import shapely
-from shapely import box
 import xarray as xr
+from shapely import box
 
 import stacathome.geo as geo
 
@@ -212,7 +210,13 @@ def no_overlap_filter_coverage(items, roi, min_overlap=None):
         items = [
             item
             for item in items
-            if geo.wgs84_overlap_percentage(geom.Geometry(shapely.geometry.shape(item.geometry), '4326'), roi)
+            if geo.wgs84_overlap_percentage(
+                geom.Geometry(
+                    shapely.geometry.shape(item.geometry),
+                    '4326',
+                ),
+                roi,
+            )
             >= min_overlap
         ]
     if not items:

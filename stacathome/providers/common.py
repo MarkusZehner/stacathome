@@ -185,6 +185,7 @@ class SimpleProvider(BaseProvider):
     """
     Simple provider to collect common functions.
     """
+
     def __init__(self, name):
         super().__init__(name)
         self.sign = None

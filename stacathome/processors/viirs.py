@@ -1,11 +1,12 @@
+import datetime as dt
+import os
+import re
+
 import h5py as h5
 import numpy as np
-import os, re
 import rasterio
-import xarray as xr
 import rioxarray
-import datetime as dt
-import re
+import xarray as xr
 
 
 def get_datetime_from_filename(fname):
@@ -36,7 +37,7 @@ def _coords_from_transform(transform, width, height):
     return x, y
 
 
-def load_viirs_as_xarray(path, scale_and_clip:bool = False):
+def load_viirs_as_xarray(path, scale_and_clip: bool = False):
     with h5.File(path, "r") as file:
         mtl = file["HDFEOS INFORMATION/StructMetadata.0"][()]
         if isinstance(mtl, bytes):
@@ -47,19 +48,16 @@ def load_viirs_as_xarray(path, scale_and_clip:bool = False):
         if projection == "HE5_GCTP_GEO":
             crs = rasterio.CRS.from_epsg(4326)
             if any([-180 < v > 180 for v in [west, north, east, south]]):
-                west, north, east, south = west/1e6, north/1e6, east/1e6, south/1e6
+                west, north, east, south = west / 1e6, north / 1e6, east / 1e6, south / 1e6
         else:
-            crs = rasterio.CRS.from_proj4(
-                "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 "
-                "+R=6371007.181 +units=m +no_defs=True"
-            )
+            crs = rasterio.CRS.from_proj4("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 " "+R=6371007.181 +units=m +no_defs=True")
 
         # Precompute transforms
-        transform_500 = rasterio.transform.from_bounds(west, south, east, north, y_dim*2, x_dim*2)
+        transform_500 = rasterio.transform.from_bounds(west, south, east, north, y_dim * 2, x_dim * 2)
         transform_1k = rasterio.transform.from_bounds(west, south, east, north, y_dim, x_dim)
 
         # Precompute coords
-        x500, y500 = _coords_from_transform(transform_500, x_dim*2, y_dim*2)
+        x500, y500 = _coords_from_transform(transform_500, x_dim * 2, y_dim * 2)
         x1k, y1k = _coords_from_transform(transform_1k, x_dim, y_dim)
 
         data_vars = {}
@@ -88,9 +86,12 @@ def load_viirs_as_xarray(path, scale_and_clip:bool = False):
             #     return
 
             # unwrap scalars
-            if isinstance(fillvalue, np.ndarray): fillvalue = fillvalue[0]
-            if isinstance(offset, np.ndarray): offset = offset[0]
-            if isinstance(scale, np.ndarray): scale = scale[0]
+            if isinstance(fillvalue, np.ndarray):
+                fillvalue = fillvalue[0]
+            if isinstance(offset, np.ndarray):
+                offset = offset[0]
+            if isinstance(scale, np.ndarray):
+                scale = scale[0]
 
             arr = node[:]
             if scale_and_clip and not None in [fillvalue, offset, scale, vmin, vmax]:
@@ -100,7 +101,7 @@ def load_viirs_as_xarray(path, scale_and_clip:bool = False):
             h, w = arr.shape
             if (h, w) == (y_dim, x_dim):
                 dims, transform, x, y = ("y_1000m", "x_1000m"), transform_1k, x1k, y1k
-            elif (h, w) == (y_dim*2, x_dim*2):
+            elif (h, w) == (y_dim * 2, x_dim * 2):
                 dims, transform, x, y = ("y_500m", "x_500m"), transform_500, x500, y500
             else:
                 dims = ("y", "x")
@@ -136,4 +137,4 @@ def load_viirs_collection(paths):
         # add time coordinate to all variables
         ds = ds.expand_dims(time=[t])
         datasets.append(ds)
-    return xr.merge(datasets)  #, fill_value=32767)
+    return xr.merge(datasets)  # , fill_value=32767)

@@ -1,22 +1,22 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
-from typing import Callable
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
+from urllib.request import urlretrieve
 
 import odc
 import odc.stac
-from odc.geo.geom import Geometry
 import planetary_computer
 import pystac
 import pystac_client
 import xarray as xr
 from odc.geo.geobox import GeoBox
-from urllib.request import urlretrieve
+from odc.geo.geom import Geometry
 
 from stacathome.metadata import CollectionMetadata, Variable
-from .common import BaseProvider, SimpleProvider, register_provider
+from .common import BaseProvider, register_provider, SimpleProvider
 
 
 class STACProvider(SimpleProvider):
