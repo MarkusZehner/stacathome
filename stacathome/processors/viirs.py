@@ -83,8 +83,9 @@ def load_viirs_as_xarray(path, scale_and_clip:bool = False):
                 vmin = node.attrs.get("valid_min", [None])[0]
                 vmax = node.attrs.get("valid_max", [None])[0]
 
-            if None in [fillvalue, offset, scale, vmin, vmax]:
-                return
+            # if None in [fillvalue, offset, scale, vmin, vmax]:
+            #     print(f'skipping {varname}')
+            #     return
 
             # unwrap scalars
             if isinstance(fillvalue, np.ndarray): fillvalue = fillvalue[0]
@@ -92,7 +93,7 @@ def load_viirs_as_xarray(path, scale_and_clip:bool = False):
             if isinstance(scale, np.ndarray): scale = scale[0]
 
             arr = node[:]
-            if scale_and_clip:
+            if scale_and_clip and not None in [fillvalue, offset, scale, vmin, vmax]:
                 arr = arr.astype(np.float32) * scale + offset
                 arr[(arr < vmin) | (arr > vmax) | (arr == fillvalue)] = np.nan
 
@@ -135,4 +136,4 @@ def load_viirs_collection(paths):
         # add time coordinate to all variables
         ds = ds.expand_dims(time=[t])
         datasets.append(ds)
-    return xr.merge(datasets)
+    return xr.merge(datasets)  #, fill_value=32767)

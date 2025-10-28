@@ -221,13 +221,10 @@ class EarthAccessProvider(SimpleProvider):
         **kwargs,
     ) -> bytes:
         if isinstance(item, list) or isinstance(item, pystac.ItemCollection):
-            return_items = []
-            for i in item:
-                return_items.append(self.load_granule(i, variables, out_dir, threads, **kwargs))
             return pystac.ItemCollection(
-                items=return_items,
+                items=[self.load_granule(i, variables, out_dir, threads, **kwargs) for i in item],
                 clone_items=False,
-                extra_fields=item.extra_fields,
+                # extra_fields=item.extra_fields,
             )
 
         if variables:

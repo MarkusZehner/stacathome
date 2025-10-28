@@ -39,7 +39,7 @@ class SecretStore:
                 for key, value in keys.items():
                     f.write(f"{name}:{key}={value}\n")
 
-    def add_key(self, name, key, value, overwrite=False):
+    def add_key(self, name:str, key:str, value:str, overwrite:bool=False):
         secrets = self._read_all()
         if name in secrets and not overwrite:
             raise KeyError(f"A key already exists under name '{name}', set overwrite=True to replace")

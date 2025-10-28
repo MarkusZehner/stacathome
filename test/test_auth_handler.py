@@ -1,7 +1,8 @@
-import pytest
 import tempfile
 from pathlib import Path
-from stacathome.auth.handler import SecretStore  
+import pytest
+
+from stacathome.auth.handler import SecretStore
 
 
 @pytest.fixture

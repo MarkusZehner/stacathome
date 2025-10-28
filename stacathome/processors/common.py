@@ -228,7 +228,14 @@ def no_overlap_filter_coverage(items, roi, min_overlap=None):
         proj = get_property(v[0], 'proj:code')
 
         for vv in v:
-            tr = get_property(vv, 'proj:transform')
+            for k in vv.get_assets():
+                if get_property(vv, 'proj:code', k):
+                    get_property(vv, 'proj:transform', k)
+                    tr = get_property(vv, 'proj:transform', k)
+                else:
+                    tr = None
+            if not tr:
+                raise ValueError('No assets found with proj:code info!')
             if not any([tr[2] / tr[0] % 1.0 == 0.0, tr[5] / tr[4] % 1.0 == 0.0]):
                 raise ValueError('Items of same UTM zone have sub-pixel grid offsets!')
 

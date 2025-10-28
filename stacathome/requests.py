@@ -84,17 +84,25 @@ def load(
 ) -> tuple[pystac.ItemCollection, xr.Dataset]:
     provider, processor = _get_provider_and_processor(provider_name, collection, processor, no_default_processor)
 
+    kwargs_request = {}
+    if 'version' in kwargs:
+        kwargs_request['version'] = kwargs['version']
+
     items = provider.request_items(
         collection=collection,
         starttime=starttime,
         endtime=endtime,
         roi=roi,
-        **kwargs,
+        **kwargs_request,
     )
     if not items:
         raise ValueError('No items matched the search query')
 
-    items = processor.filter_items(provider, roi, items)
+    if 'temp_path' in kwargs:
+        items = processor.filter_items(provider, roi, items, kwargs['temp_path'])
+    else:
+        items = processor.filter_items(provider, roi, items)
+
     if not items:
         raise ValueError('No items left after filtering')
 

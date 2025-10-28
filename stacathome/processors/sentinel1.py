@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import rasterio
 from rasterio.env import Env
 import pystac
@@ -18,9 +20,13 @@ from .common import no_overlap_filter_coverage, get_property
 class Sentinel1OperaL2RTCProcessor(SimpleProcessor):
 
     def filter_items(
-        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection
+        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection,
+        temp_path: Path | None = None,
     ) -> pystac.ItemCollection:
 
+        if temp_path: 
+            items = provider.load_granule(items, out_dir=temp_path)
+            
         if not get_property(items[0], 'proj:code'):
             update_from_raster(items)
 
@@ -42,7 +48,7 @@ class Sentinel1OperaL2RTCProcessor(SimpleProcessor):
 
 
 def update_from_raster(items: list[pystac.Item], proj=True, raster=False) -> list[pystac.Item]:
-    """too slow for usage"""
+    """too slow for usage from remote data source, download granules first"""
     with Env(**handle_rasterio_env()):
         for i, _ in enumerate(items):
             proj_info = {}
@@ -72,4 +78,10 @@ def update_from_raster(items: list[pystac.Item], proj=True, raster=False) -> lis
     return items
 
 
+class Sentinel1RTCProcessor(SimpleProcessor):
+    # tiles do not overlap, no regular grid to take advantage from
+    pass
+
+
+register_default_processor('planetary_computer', 'sentinel-1-rtc', Sentinel1RTCProcessor)
 register_default_processor('earthaccess', 'sentinel-1-opera-l2rtc', Sentinel1OperaL2RTCProcessor)

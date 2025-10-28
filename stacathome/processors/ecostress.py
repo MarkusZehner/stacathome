@@ -35,7 +35,8 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
     '''
 
     def filter_items(
-        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection
+        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection, 
+        temp_path: Path | None = None,
     ) -> pystac.ItemCollection:
         """
 
@@ -47,8 +48,16 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
         extra_fields = items.extra_fields
         item_list = [item for item in items]
         item_list = ecostress_pc_filter_newest_processing_iteration(item_list)
+
+        if temp_path: 
+            item_list = provider.load_granule(item_list, out_dir=temp_path)
+
+        if not get_property(item_list[0], 's2:mgrs_tile'):
+            item_list = ecostress_pc_add_mgrs_tile_id(item_list)
+
         if not get_property(item_list[0], 'proj:transform'):
             item_list = update_tiled_data_from_raster(item_list)
+            
         item_list = [MGRSTiledItem(item) for item in item_list]
         item_list = mgrs_tiled_overlap_filter_coverage(item_list, roi)
         return pystac.ItemCollection(
@@ -117,12 +126,22 @@ def ecostress_pc_filter_newest_processing_iteration(items: list[pystac.Item]) ->
             filtered[base_name] = (product_iteration, item)
     return [v[1] for v in filtered.values()]
 
+def ecostress_pc_add_mgrs_tile_id(items: list[pystac.Item]) -> list[pystac.Item]:
+    """
+    Returns the newest processing iteration of ECO_L2T_LSTE items using the processing iteration from the ID.
+    The ID is expected to be in the format 'ECOv002_L2T_LSTE_28425_001_32MQE_20230711T175148_0710_01'.
+    """
+    for item in items:
+        native_id = item.id
+        item.properties['s2:mgrs_tile'] = native_id.split('_')[5]
+    return items
+
 
 def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=False) -> list[pystac.Item]:
     """
     Gathers additional information by reading the metadata from the provider.
-    To limit this, items are grouped by their UTM zone and
-    all items of one zone are assumed to have the same proj and raster info.
+    To limit this, items are grouped by their UTM zone tile id and
+    all items of one tile are assumed to have the same proj and raster info.
     The ID is expected to be in the format
     'ECOv002_L2T_LSTE_28425_001_32MQE_20230711T175148_0710_01'.
 
@@ -131,18 +150,18 @@ def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=Fa
 
     utm_dict = defaultdict(list)
     for item in items:
-        utm_zone = item.id.split('_')[5]
-        utm_dict[utm_zone].append(item)
+        utm_tile_id = item.id.split('_')[5]
+        utm_dict[utm_tile_id].append(item)
 
     info_dict = {}
     with Env(**handle_rasterio_env()):
         raster_info = {}
-        for utm_zone, item_list in utm_dict.items():
-            info_dict[utm_zone] = {}
+        for utm_tile_id, item_list in utm_dict.items():
+            info_dict[utm_tile_id] = {}
             proj_info = {}
 
             for name, asset in item_list[0].get_assets().items():
-                info_dict[utm_zone][name] = {}
+                info_dict[utm_tile_id][name] = {}
                 if (proj and not proj_info) or (raster and not raster_info.get(name)):
                     with rasterio.open(asset.href) as src_dst:
                         if proj and not proj_info:
@@ -157,23 +176,23 @@ def update_tiled_data_from_raster(items: list[pystac.Item], proj=True, raster=Fa
                                 del proj_info['proj:epsg']
                         if raster and not raster_info.get(name):
                             raster_info[name] = {"raster:bands": get_raster_info(src_dst, max_size=1024)}
-            info_dict[utm_zone] = info_dict[utm_zone] | proj_info
+            info_dict[utm_tile_id] = info_dict[utm_tile_id] | proj_info
         info_dict = info_dict | raster_info
 
     items_with_exts = []
-    for utm_zone, item_list in utm_dict.items():
+    for utm_tile_id, item_list in utm_dict.items():
         for item in item_list:
             ProjectionExtension.add_to(item)
             RasterExtension.add_to(item)
             proj_ext = ProjectionExtension.ext(item)
-            proj_ext.epsg = info_dict[utm_zone]['proj:code']
-            proj_ext.bbox = info_dict[utm_zone]['proj:bbox']
-            proj_ext.shape = info_dict[utm_zone]['proj:shape']
-            proj_ext.transform = info_dict[utm_zone]['proj:transform']
+            proj_ext.epsg = info_dict[utm_tile_id]['proj:code']
+            proj_ext.bbox = info_dict[utm_tile_id]['proj:bbox']
+            proj_ext.shape = info_dict[utm_tile_id]['proj:shape']
+            proj_ext.transform = info_dict[utm_tile_id]['proj:transform']
             if raster:
                 for name, asset in item.get_assets().items():
                     item.assets[name].extra_fields['raster:bands'] = info_dict[name]['raster:bands']
-            item.properties['grid:code'] = utm_zone
+            item.properties['grid:code'] = utm_tile_id
             items_with_exts.append(item)
     return items_with_exts
 
