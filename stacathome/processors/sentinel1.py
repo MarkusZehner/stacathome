@@ -83,5 +83,53 @@ class Sentinel1RTCProcessor(SimpleProcessor):
     pass
 
 
+class Sentinel1OperaL2RTCStaticProcessor(SimpleProcessor):
+
+    def get_burst_id(self, item):
+        return item.id.split('_')[3]
+
+    def overwrite_items_to_access_static_data(self, item):
+        static_variables = ["incidence_angle", "local_incidence_angle", "number_of_looks", "rtc_anf_gamma0_to_beta0", "rtc_anf_gamma0_to_sigma0"]
+
+        item.properties['start_datetime'] = "2014-04-03T00:00:00Z"
+        item.properties['end_datetime'] = "2014-04-03T00:00:00Z"
+        item.properties['datetime'] = "2014-04-03T00:00:00Z"
+        
+        item.assets = {
+            variable: pystac.Asset(
+                href='https://datapool.asf.alaska.edu/RTC-STATIC/OPERA-S1/'
+                    f'OPERA_L2_RTC-S1-STATIC_{self.get_burst_id(item)}_20140403_S1A_30_v1.0_{variable}.tif',
+                media_type=pystac.MediaType.COG,
+                roles=["data"]
+            )
+            for variable in static_variables
+        }
+
+    def filter_items(
+        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection,
+        temp_path: Path | None = None,
+    ) -> pystac.ItemCollection:
+
+        burst_ids = {}
+        for item in items:
+            if not self.get_burst_id(item) in burst_ids:
+                burst_ids[self.get_burst_id(item)] = self.overwrite_items_to_access_static_data(item)
+
+        if temp_path: 
+            items = provider.load_granule(items, out_dir=temp_path)
+            
+        if not get_property(items[0], 'proj:code'):
+            update_from_raster(items)
+
+        items_filtered = no_overlap_filter_coverage(items, roi)
+
+        return pystac.ItemCollection(
+            items=items_filtered,
+            clone_items=False,
+            extra_fields=items.extra_fields,
+        )
+
+
 register_default_processor('planetary_computer', 'sentinel-1-rtc', Sentinel1RTCProcessor)
 register_default_processor('earthaccess', 'sentinel-1-opera-l2rtc', Sentinel1OperaL2RTCProcessor)
+register_default_processor('earthaccess', 'sentinel-1-opera-l2rtc-static', Sentinel1OperaL2RTCStaticProcessor)
