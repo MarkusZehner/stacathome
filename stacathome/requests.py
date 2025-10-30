@@ -98,10 +98,14 @@ def load(
     if not items:
         raise ValueError('No items matched the search query')
 
+    if not items[0].collection_id == collection:
+        for item in items:
+            item.collection_id = collection
+
     if 'temp_path' in kwargs:
-        items = processor.filter_items(provider, roi, items, kwargs['temp_path'])
+        items = processor.filter_items(provider, roi, items, variables, kwargs['temp_path'])
     else:
-        items = processor.filter_items(provider, roi, items)
+        items = processor.filter_items(provider, roi, items, variables)
 
     if not items:
         raise ValueError('No items left after filtering')

@@ -21,11 +21,12 @@ class Sentinel1OperaL2RTCProcessor(SimpleProcessor):
         provider: SimpleProvider,
         roi: geom.Geometry,
         items: pystac.ItemCollection,
-        temp_path: Path | None = None,
+        variables: list[str] | None = None,
+        temp_path: str | None = None,
     ) -> pystac.ItemCollection:
 
         if temp_path:
-            items = provider.load_granule(items, out_dir=temp_path)
+            items = provider.load_granule(items, variables, out_dir=temp_path)
 
         if not get_property(items[0], 'proj:code'):
             update_from_raster(items)
@@ -80,13 +81,11 @@ def update_from_raster(items: list[pystac.Item], proj=True, raster=False) -> lis
 
 class Sentinel1RTCProcessor(SimpleProcessor):
     # tiles do not overlap, no regular grid to take advantage from
-    pass
-
-
-class Sentinel1OperaL2RTCStaticProcessor(SimpleProcessor):
-
     def get_burst_id(self, item):
         return item.id.split('_')[3]
+
+
+class Sentinel1OperaL2RTCStaticProcessor(Sentinel1RTCProcessor):
 
     def overwrite_items_to_access_static_data(self, item):
         static_variables = [
@@ -110,6 +109,7 @@ class Sentinel1OperaL2RTCStaticProcessor(SimpleProcessor):
             )
             for variable in static_variables
         }
+        return item
 
     def filter_items(
         self,
@@ -123,6 +123,8 @@ class Sentinel1OperaL2RTCStaticProcessor(SimpleProcessor):
         for item in items:
             if not self.get_burst_id(item) in burst_ids:
                 burst_ids[self.get_burst_id(item)] = self.overwrite_items_to_access_static_data(item)
+
+        items = [burst_ids[b] for b in sorted(burst_ids)]
 
         if temp_path:
             items = provider.load_granule(items, out_dir=temp_path)

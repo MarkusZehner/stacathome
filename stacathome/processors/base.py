@@ -19,7 +19,12 @@ _processor_instances: dict[_ProcessorRegistryKey, 'BaseProcessor'] = {}
 class BaseProcessor:
 
     def filter_items(
-        self, provider: BaseProvider, roi: Geometry, items: pystac.ItemCollection
+        self,
+        provider: BaseProvider,
+        roi: Geometry,
+        items: pystac.ItemCollection,
+        variables: list[str] | None = None,
+        temp_path: str | None = None,
     ) -> pystac.ItemCollection:
         """
         Filter items in the collection based on specific criteria.
@@ -129,10 +134,12 @@ class SimpleProcessor(BaseProcessor):
         )
 
         attrs_per_var = metadata.attributes_per_variable() if metadata else {}
+
         for variable_name in xr_dataset.keys():
             var_attrs = attrs_per_var.get(variable_name, {})
             var_attrs['resampling'] = resampling.get('variable_name', 'nearest')
             xr_dataset[variable_name].attrs.update(var_attrs)
+
         return xr_dataset
 
 

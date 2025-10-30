@@ -11,4 +11,4 @@ __all__ = [
 
 # Import metadata packages
 
-from . import planetary  # noqa: F401
+from . import earthaccess, planetary  # noqa: F401  # noqa: F401

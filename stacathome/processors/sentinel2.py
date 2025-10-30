@@ -48,7 +48,12 @@ class Sentinel2L2AProcessor(SimpleProcessor):
         self.adjust_baseline = adjust_baseline
 
     def filter_items(
-        self, provider: SimpleProvider, roi: geom.Geometry, items: pystac.ItemCollection
+        self,
+        provider: SimpleProvider,
+        roi: geom.Geometry,
+        items: pystac.ItemCollection,
+        variables: list[str] | None = None,
+        temp_path: str | None = None,
     ) -> pystac.ItemCollection:
         """
 

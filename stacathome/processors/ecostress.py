@@ -26,9 +26,6 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
     -> filter items
     -> download data
     -> load to xarray
-
-
-
     '''
 
     def filter_items(
@@ -36,6 +33,7 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
         provider: SimpleProvider,
         roi: geom.Geometry,
         items: pystac.ItemCollection,
+        variables: list[str] | None = None,
         temp_path: Path | None = None,
     ) -> pystac.ItemCollection:
         """
@@ -50,7 +48,7 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
         item_list = ecostress_pc_filter_newest_processing_iteration(item_list)
 
         if temp_path:
-            item_list = provider.load_granule(item_list, out_dir=temp_path)
+            item_list = provider.load_granule(item_list, variables, out_dir=temp_path)
 
         if not get_property(item_list[0], 's2:mgrs_tile'):
             item_list = ecostress_pc_add_mgrs_tile_id(item_list)
@@ -60,6 +58,7 @@ class ECO_L2T_LSTEProcessor(SimpleProcessor):
 
         item_list = [MGRSTiledItem(item) for item in item_list]
         item_list = mgrs_tiled_overlap_filter_coverage(item_list, roi)
+
         return pystac.ItemCollection(
             items=item_list,
             clone_items=False,
@@ -129,7 +128,7 @@ def ecostress_pc_filter_newest_processing_iteration(items: list[pystac.Item]) ->
 
 def ecostress_pc_add_mgrs_tile_id(items: list[pystac.Item]) -> list[pystac.Item]:
     """
-    Returns the newest processing iteration of ECO_L2T_LSTE items using the processing iteration from the ID.
+    Returns mgrs grid id of ECO_L2T_LSTE items using the ID.
     The ID is expected to be in the format 'ECOv002_L2T_LSTE_28425_001_32MQE_20230711T175148_0710_01'.
     """
     for item in items:
